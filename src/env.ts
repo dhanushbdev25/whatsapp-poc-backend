@@ -60,6 +60,9 @@ const envSchema = z.object({
 	DB_SEEDING: stringBoolean,
 
 	WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string(),
+	WHATSAPP_ACCESS_TOKEN: z.string(),
+	WHATSAPP_PHONE_NUMBER_ID: z.string(),
+	WHATSAPP_API_VERSION: z.string().optional(),
 
 	TZ: z.string().default('UTC'),
 });

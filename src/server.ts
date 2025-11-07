@@ -36,7 +36,7 @@ app.init()
 		server.on('error', serverError);
 		server.on('listening', serverListening);
 		server.listen(env.PORT);
-		await testConnection();
+		// await testConnection();
 	})
 	.catch((err: Error) => {
 		logger.error('app.init error', {

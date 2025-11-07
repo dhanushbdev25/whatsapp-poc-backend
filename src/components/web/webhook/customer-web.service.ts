@@ -3,8 +3,15 @@ import { db } from '@/database';
 import { customerMaster, type InsertCustomer } from '@/database/schema';
 import logger from '@/lib/logger';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
+import { WhatsAppMessageService } from './whatsapp-message.service';
 
 export class CustomerWebService {
+	private whatsappMessageService: WhatsAppMessageService;
+
+	constructor() {
+		this.whatsappMessageService = new WhatsAppMessageService();
+	}
+
 	/**
 	 * Parse WhatsApp ID (wa_id) to integer
 	 * wa_id is typically a string like "918610031033", we need to convert it to integer
@@ -70,22 +77,41 @@ export class CustomerWebService {
 			};
 
 			// Insert customer
-			const [customer] = await db
-				.insert(customerMaster)
-				.values(customerData)
-				.returning({ id: customerMaster.id, customerID: customerMaster.customerID });
+			// const [customer] = await db
+			// 	.insert(customerMaster)
+			// 	.values(customerData)
+			// 	.returning({ id: customerMaster.id, customerID: customerMaster.customerID });
 
-			if (!customer) {
-				throw new Error('Failed to create customer');
-			}
+			// if (!customer) {
+			// 	throw new Error('Failed to create customer');
+			// }
 
 			logger.info('Customer created from WhatsApp Flow', {
-				customerID: customer.customerID,
+				// customerID: customer.customerID,
 				phone,
 				email,
+				name: fullName,
 			});
 
-			return customer;
+			// Send enrollment confirmation message
+			// Extract template config from flow data if available
+			if (fullName && phone) {
+				const templateName = "lush_loyalty_main_menu_premium";
+				const headerImageUrl = "https://mtbsapoc.blob.core.windows.net/whatsapppoccontainer/lush-products-main.jpg";
+
+				this.whatsappMessageService
+					.sendEnrollmentConfirmation(phone, fullName, templateName, headerImageUrl)
+					.catch((error) => {
+						logger.error('Failed to send enrollment confirmation message', {
+							error,
+							// customerID: customer.customerID,
+							phone,
+							customerName: fullName,
+						});
+					});
+			}
+
+			return { id: 'customer', customerID: customerID };
 		} catch (error) {
 			return handleServiceError(
 				error,

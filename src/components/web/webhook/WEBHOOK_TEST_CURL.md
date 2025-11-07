@@ -300,6 +300,56 @@ curl -X POST "http://localhost:8080/web/webhook" \
   }'
 ```
 
+### Sample Flow Completion with Custom Template Configuration
+You can include `template_name` and `header_image_url` in the flow data to customize the enrollment message:
+
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "contacts": [
+                {
+                  "profile": {
+                    "name": "Jane Smith"
+                  },
+                  "wa_id": "919876543210"
+                }
+              ],
+              "messages": [
+                {
+                  "from": "919876543210",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "interactive",
+                  "interactive": {
+                    "type": "flow",
+                    "flow_response_json": "{\"version\":\"3\",\"screen\":\"COMPLETE\",\"data\":{\"firstname\":\"Jane\",\"lastname\":\"Smith\",\"email\":\"jane.smith@example.com\",\"phone\":\"919876543210\",\"street_address\":\"456 Park Avenue\",\"city\":\"Delhi\",\"pincode\":\"110001\",\"template_name\":\"custom_template_name\",\"header_image_url\":\"https://example.com/custom-image.jpg\"}}"
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**Note:** The `template_name` and `header_image_url` fields in the flow data are optional. If not provided, the system will use environment variable defaults or hardcoded defaults.
+
 **Expected Response:**
 - Status: `200 OK`
 - Body: JSON `{"success": true, "data": {"received": true}, "message": "Webhook event received", "timestamp": "..."}`
@@ -309,6 +359,9 @@ curl -X POST "http://localhost:8080/web/webhook" \
 - `"Flow data extracted from flow_response_json"` - Confirms data extraction
 - `"Processing WhatsApp Flow completion"` - Shows flow completion
 - `"Customer created successfully from WhatsApp Flow"` - Confirms customer creation
+- `"Enrollment confirmation message sent successfully"` - Confirms enrollment message sent
+
+**Note:** After successful customer creation, an enrollment confirmation message is automatically sent to the customer using the configured template with their name as a parameter.
 
 ### Alternative Flow Data Structure (flow_response_data)
 ```bash
@@ -520,11 +573,35 @@ curl -X POST "http://localhost:8080/web/webhook" \
 
 ## Environment Setup
 
-Before testing, make sure you have set the `WHATSAPP_WEBHOOK_VERIFY_TOKEN` in your `.env` file:
+Before testing, make sure you have set the following WhatsApp configuration in your `.env` file:
 
 ```env
+# Webhook Verification
 WHATSAPP_WEBHOOK_VERIFY_TOKEN=your_secret_verify_token_here
+
+# WhatsApp API Configuration (for sending messages)
+WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token_here
+WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id_here
+
+# Optional WhatsApp API Settings
+WHATSAPP_API_VERSION=v21.0
+
+# Optional defaults for enrollment template (can be overridden via flow data)
+WHATSAPP_ENROLLMENT_TEMPLATE_NAME=lush_loyalty_main_menu_premium
+WHATSAPP_ENROLLMENT_HEADER_IMAGE_URL=https://mtbsapoc.blob.core.windows.net/whatsapppoccontainer/lush-products-main.jpg
 ```
+
+**Required Variables:**
+- `WHATSAPP_WEBHOOK_VERIFY_TOKEN` - Token for webhook verification (used in GET endpoint)
+- `WHATSAPP_ACCESS_TOKEN` - Bearer token for WhatsApp Graph API (for sending messages)
+- `WHATSAPP_PHONE_NUMBER_ID` - Your WhatsApp Business Phone Number ID (e.g., "918090124709683")
+
+**Optional Variables:**
+- `WHATSAPP_API_VERSION` - WhatsApp API version (default: "v21.0")
+- `WHATSAPP_ENROLLMENT_TEMPLATE_NAME` - Default template name (can be overridden via flow data `template_name` or `templateName`)
+- `WHATSAPP_ENROLLMENT_HEADER_IMAGE_URL` - Default header image URL (can be overridden via flow data `header_image_url` or `headerImageUrl`)
+
+**Note:** Template name and header image URL can be passed in the flow data itself, making them configurable per flow without changing environment variables. The priority is: Flow Data → Environment Variable → Hardcoded Default
 
 Replace `YOUR_VERIFY_TOKEN` in the GET request with the same value from your `.env` file.
 
