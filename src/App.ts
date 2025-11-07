@@ -29,7 +29,7 @@ export default class App {
 
 		this.preAuthRoutes();
 
-		RoleBaseAccess.init();
+		// RoleBaseAccess.init();
 
 		// register the all routes
 		this.protectedRoutes();
