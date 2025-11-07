@@ -431,19 +431,19 @@ export class WebhookWebService {
 			const formattedTotal = `${totalAmount} ${currency}`;
 
 			// Get customer name
-			const customerName = await this.customerService.getCustomerName(phoneNumber, waId) || 'Customer';
+			// const customerName = await this.customerService.getCustomerName(phoneNumber, waId) || 'Customer';
 
 			// Send order confirmation message
 			await this.customerService.sendOrderConfirmation(
 				phoneNumber,
-				customerName,
+				"customerName",
 				itemsCount,
 				formattedTotal,
 			);
 
 			logger.info('Order confirmation sent successfully', {
 				phoneNumber,
-				customerName,
+				// customerName,
 				itemsCount,
 				totalAmount: formattedTotal,
 			});
