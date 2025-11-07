@@ -8,7 +8,7 @@ export { userRoles, userRolesRelations } from './userRoles';
 export { users, usersRelations, type SelectUserType } from './users';
 
 // Gender Enum
-export { genderEnum } from './bussiness/customer/customers';
+export { genderEnum } from './business/customer/customers';
 
 // Customer schemas
 export {
@@ -16,14 +16,14 @@ export {
 	customerMasterRelations,
 	type SelectCustomer,
 	type InsertCustomer,
-} from './bussiness/customer/customers';
+} from './business/customer/customers';
 
 export {
 	notificationPreferences,
 	notificationPreferencesRelations,
 	type SelectNotificationPreferences,
 	type InsertNotificationPreferences,
-} from './bussiness/customer/notificationPreferences';
+} from './business/customer/notificationPreferences';
 
 // Customer Group schemas
 export {
@@ -31,14 +31,14 @@ export {
 	customerGroupsRelations,
 	type SelectCustomerGroup,
 	type InsertCustomerGroup,
-} from './bussiness/customerGroup/customerGroups';
+} from './business/customerGroup/customerGroups';
 
 export {
 	customerGroupMembers,
 	customerGroupMembersRelations,
 	type SelectCustomerGroupMember,
 	type InsertCustomerGroupMember,
-} from './bussiness/customerGroup/customerGroupMembers';
+} from './business/customerGroup/customerGroupMembers';
 
 // Loyalty schemas
 export {
@@ -46,21 +46,21 @@ export {
 	loyaltyAccountsRelations,
 	type SelectLoyaltyAccount,
 	type InsertLoyaltyAccount,
-} from './bussiness/loyalities/loyaltyAccounts';
+} from './business/loyalities/loyaltyAccounts';
 
 export {
 	loyaltyTransactions,
 	loyaltyTransactionsRelations,
 	type SelectLoyaltyTransaction,
 	type InsertLoyaltyTransaction,
-} from './bussiness/loyalities/loyaltyTransactions';
+} from './business/loyalities/loyaltyTransactions';
 
 export {
 	tiers,
 	tiersRelations,
 	type SelectTier,
 	type InsertTier,
-} from './bussiness/loyalities/tiers';
+} from './business/loyalities/tiers';
 
 // Order schemas
 export {
@@ -69,7 +69,7 @@ export {
 	orderStatusEnum,
 	type SelectOrder,
 	type InsertOrder,
-} from './bussiness/order/orders';
+} from './business/order/orders';
 
 export {
 	orderMapping,
@@ -77,4 +77,4 @@ export {
 	orderMappingStatusEnum,
 	type SelectOrderMapping,
 	type InsertOrderMapping,
-} from './bussiness/order/orderMapping';
+} from './business/order/orderMapping';

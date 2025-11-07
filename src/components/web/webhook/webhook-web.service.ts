@@ -2,8 +2,15 @@ import { StatusCodes } from 'http-status-codes';
 import AppError from '@/abstractions/AppError';
 import env from '@/env';
 import logger from '@/lib/logger';
+import { CustomerWebService } from './customer-web.service';
 
 export class WebhookWebService {
+	private customerService: CustomerWebService;
+
+	constructor() {
+		this.customerService = new CustomerWebService();
+	}
+
 	/**
 	 * Verify webhook subscription request from WhatsApp
 	 */
@@ -55,7 +62,9 @@ export class WebhookWebService {
 				const value = change?.value;
 
 				if (value?.messages && Array.isArray(value.messages) && value.messages.length > 0) {
-					await this.processMessages(value.messages, value.metadata);
+					// Extract wa_id from contacts if available
+					const waId = value?.contacts?.[0]?.wa_id || value?.messages[0]?.from;
+					await this.processMessages(value.messages, value.metadata, waId);
 				}
 
 				if (value?.statuses && Array.isArray(value.statuses) && value.statuses.length > 0) {
@@ -75,25 +84,36 @@ export class WebhookWebService {
 	/**
 	 * Process incoming messages from users
 	 */
-	private async processMessages(messages: any[], metadata?: any): Promise<void> {
+	private async processMessages(messages: any[], metadata?: any, waId?: string): Promise<void> {
 		for (const message of messages) {
 			if (!message) continue;
 
+			const phoneNumber = message?.from;
+			const messageType = message?.type;
+			// Use wa_id from parameter or fallback to phone number
+			const customerWaId = waId || phoneNumber;
+
 			logger.info('Message received from user', {
-				from: message?.from,
+				from: phoneNumber,
+				waId: customerWaId,
 				messageId: message?.id,
-				type: message?.type,
+				type: messageType,
 				timestamp: message?.timestamp,
 				phoneNumberId: metadata?.phone_number_id,
 			});
 
+			// Handle WhatsApp Flow responses
+			if (messageType === 'interactive' && message?.interactive?.type === 'flow') {
+				await this.handleFlowResponse(message, phoneNumber, customerWaId);
+			}
+
 			const messageContent = this.extractMessageContent(message);
 
 			logger.info('Message content extracted', {
-				from: message?.from,
+				from: phoneNumber,
 				messageId: message?.id,
 				content: messageContent,
-				type: message?.type,
+				type: messageType,
 			});
 		}
 	}
@@ -114,6 +134,9 @@ export class WebhookWebService {
 				if (message?.interactive?.type === 'list_reply') {
 					return message?.interactive?.list_reply?.title;
 				}
+				if (message?.interactive?.type === 'flow') {
+					return '[Flow Response]';
+				}
 				return undefined;
 			case 'image':
 				return message?.image?.caption || '[Image]';
@@ -127,6 +150,168 @@ export class WebhookWebService {
 				return `[Location: ${message?.location?.latitude}, ${message?.location?.longitude}]`;
 			default:
 				return `[${messageType || 'unknown'}]`;
+		}
+	}
+
+	/**
+	 * Handle WhatsApp Flow response
+	 */
+	private async handleFlowResponse(message: any, phoneNumber: string, waId: string): Promise<void> {
+		try {
+			const interactive = message?.interactive;
+			
+			if (interactive?.type !== 'flow') {
+				return;
+			}
+
+			// Log the full interactive structure for debugging
+			logger.info('Flow interactive message received', {
+				phoneNumber,
+				interactive: JSON.stringify(interactive).substring(0, 1000),
+			});
+
+			// Extract flow data from various possible locations
+			let flowData: any;
+			
+			// Try flow_response_json first (most common location)
+			if (interactive?.flow_response_json) {
+				try {
+					flowData = typeof interactive.flow_response_json === 'string'
+						? JSON.parse(interactive.flow_response_json)
+						: interactive.flow_response_json;
+					logger.info('Flow data extracted from flow_response_json', {
+						phoneNumber,
+						screen: flowData?.screen,
+					});
+				} catch (parseError) {
+					logger.error('Failed to parse flow_response_json', {
+						error: parseError,
+						flow_response_json: interactive.flow_response_json,
+					});
+					return;
+				}
+			}
+			// Try flow_response_data (alternative location)
+			else if (interactive?.flow_response_data) {
+				try {
+					flowData = typeof interactive.flow_response_data === 'string'
+						? JSON.parse(interactive.flow_response_data)
+						: interactive.flow_response_data;
+					logger.info('Flow data extracted from flow_response_data', {
+						phoneNumber,
+						screen: flowData?.screen,
+					});
+				} catch (parseError) {
+					logger.error('Failed to parse flow_response_data', {
+						error: parseError,
+						flow_response_data: interactive.flow_response_data,
+					});
+					return;
+				}
+			}
+			// Try button_reply payload (sometimes used)
+			else if (interactive?.button_reply?.payload) {
+				try {
+					const payload = typeof interactive.button_reply.payload === 'string'
+						? JSON.parse(interactive.button_reply.payload)
+						: interactive.button_reply.payload;
+					
+					if (payload?.flow_token) {
+						logger.info('Flow token received, waiting for flow completion', {
+							phoneNumber,
+							flowToken: payload.flow_token,
+						});
+						return;
+					}
+					flowData = payload;
+					logger.info('Flow data extracted from button_reply payload', {
+						phoneNumber,
+						screen: flowData?.screen,
+					});
+				} catch (parseError) {
+					logger.error('Failed to parse button_reply payload', {
+						error: parseError,
+						payload: interactive.button_reply.payload,
+					});
+					return;
+				}
+			}
+			// Log full structure if no flow data found
+			else {
+				logger.warn('Flow response received but no flow data found in expected locations', {
+					phoneNumber,
+					interactiveKeys: Object.keys(interactive || {}),
+					fullInteractive: JSON.stringify(interactive).substring(0, 500),
+				});
+				return;
+			}
+
+			// Check if flow is completed
+			if (flowData?.screen !== 'COMPLETE' && flowData?.version) {
+				logger.info('Flow response received but not completed', {
+					phoneNumber,
+					screen: flowData?.screen,
+				});
+				return;
+			}
+
+			logger.info('Processing WhatsApp Flow completion', {
+				phoneNumber,
+				waId,
+				flowData: JSON.stringify(flowData).substring(0, 500),
+			});
+
+			// Parse wa_id to customer ID
+			const customerID = this.parseWaIdToCustomerID(waId);
+
+			// Check if customer already exists by customer ID (wa_id)
+			// const existingCustomer = await this.customerService.findCustomerByCustomerID(customerID);
+			
+			// if (existingCustomer) {
+			// 	logger.info('Customer already exists, skipping creation', {
+			// 		phoneNumber,
+			// 		waId,
+			// 		customerID: existingCustomer.customerID,
+			// 	});
+			// 	return;
+			// }
+
+			// // Create customer from flow data using wa_id as customer ID
+			// const customer = await this.customerService.createCustomerFromFlow(flowData, phoneNumber, waId);
+
+			logger.info('Customer created successfully from WhatsApp Flow', {
+				phoneNumber,
+				waId,
+				// customerID: customer.customerID,
+				// customerId: customer.id,
+			});
+		} catch (error) {
+			logger.error('Error handling flow response', {
+				error,
+				phoneNumber,
+				waId,
+				messageId: message?.id,
+			});
+		}
+	}
+
+	/**
+	 * Parse WhatsApp ID (wa_id) to integer customer ID
+	 */
+	private parseWaIdToCustomerID(waId: string): number {
+		try {
+			// Remove any non-numeric characters and parse to integer
+			const numericId = waId.replace(/\D/g, '');
+			const customerID = parseInt(numericId, 10);
+			
+			if (isNaN(customerID) || customerID <= 0) {
+				throw new Error(`Invalid wa_id format: ${waId}`);
+			}
+			
+			return customerID;
+		} catch (error) {
+			logger.error('Failed to parse wa_id to customerID', { error, waId });
+			throw error;
 		}
 	}
 
