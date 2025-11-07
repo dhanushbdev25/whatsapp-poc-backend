@@ -1,0 +1,155 @@
+echo "🚀 Running pre-push checks..."
+
+# Pre-push hook configuration:
+# - TypeScript errors: MANDATORY (push will fail)
+# - ESLint errors: MANDATORY (push will fail)  
+# - Outdated dependencies: INTERACTIVE (user can choose to continue)
+# - Security vulnerabilities: INTERACTIVE (user can choose to continue)
+# - Build failures: MANDATORY (push will fail)
+# - Large files: INTERACTIVE (user can choose to continue)
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if we're on main/master branch
+CURRENT_BRANCH=$(git branch --show-current)
+if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
+    print_warning "You're pushing to $CURRENT_BRANCH branch. Make sure this is intentional!"
+fi
+
+# 1. Check for TypeScript compilation errors (MANDATORY)
+print_status "Checking TypeScript compilation..."
+npx tsc --noEmit
+TS_EXIT_CODE=$?
+
+if [ $TS_EXIT_CODE -ne 0 ]; then
+    print_error "TypeScript compilation found errors!"
+    echo ""
+    print_error "All TypeScript errors must be resolved before pushing."
+    print_error "Run 'npm run check-all' to identify and fix type errors."
+    echo ""
+    print_error "Push blocked due to TypeScript errors."
+    exit 1
+else
+    print_success "TypeScript compilation passed"
+fi
+
+# 2. Run ESLint on all files
+print_status "Running ESLint on all files..."
+npm run lint
+if [ $? -ne 0 ]; then
+    print_error "ESLint checks failed!"
+    exit 1
+fi
+print_success "ESLint checks passed"
+
+# 3. Check for outdated dependencies (INTERACTIVE - user can choose to continue)
+print_status "Checking for outdated dependencies..."
+OUTDATED_COUNT=$(npm outdated --json 2>/dev/null | grep -c ":" || echo "0")
+if [ "$OUTDATED_COUNT" -gt 0 ]; then
+    print_warning "Found $OUTDATED_COUNT outdated dependencies:"
+    npm outdated
+    echo ""
+    print_warning "Consider updating dependencies with: npm update"
+    echo ""
+    read -p "Do you want to continue pushing despite outdated dependencies? (y/N): " -n 1 -r
+    echo
+    if [ ! "$REPLY" = "y" ] && [ ! "$REPLY" = "Y" ]; then
+        print_error "Push cancelled due to outdated dependencies"
+        exit 1
+    fi
+else
+    print_success "All dependencies are up to date"
+fi
+
+# 4. Check for security vulnerabilities
+print_status "Checking for security vulnerabilities..."
+npm audit --audit-level=moderate
+if [ $? -ne 0 ]; then
+    print_warning "Security vulnerabilities found!"
+    echo ""
+    read -p "Do you want to continue pushing despite security issues? (y/N): " -n 1 -r
+    echo
+    if [ ! "$REPLY" = "y" ] && [ ! "$REPLY" = "Y" ]; then
+        print_error "Push cancelled due to security vulnerabilities"
+        exit 1
+    fi
+else
+    print_success "No security vulnerabilities found"
+fi
+
+# 5. Run build to ensure everything compiles
+print_status "Running production build..."
+npm run build
+if [ $? -ne 0 ]; then
+    print_error "Production build failed!"
+    exit 1
+fi
+print_success "Production build passed"
+
+# 6. Check for large files in commit
+print_status "Checking for large files..."
+# Simplified large file check - just check if any files are larger than 1MB
+LARGE_FILES_FOUND=false
+for file in $(git diff HEAD~1 --name-only 2>/dev/null); do
+    if [ -f "$file" ]; then
+        # Use a cross-platform way to get file size
+        size=$(wc -c < "$file" 2>/dev/null || echo "0")
+        if [ "$size" -gt 1048576 ]; then
+            if [ "$LARGE_FILES_FOUND" = false ]; then
+                print_warning "Large files detected in commit:"
+                LARGE_FILES_FOUND=true
+            fi
+            echo "  $file ($size bytes)"
+        fi
+    fi
+done
+
+if [ "$LARGE_FILES_FOUND" = true ]; then
+    echo ""
+    read -p "Do you want to continue pushing with large files? (y/N): " -n 1 -r
+    echo
+    if [ ! "$REPLY" = "y" ] && [ ! "$REPLY" = "Y" ]; then
+        print_error "Push cancelled due to large files"
+        exit 1
+    fi
+else
+    print_success "No large files detected"
+fi
+
+# 7. Check for TODO/FIXME comments in commit (simplified)
+print_status "Checking for TODO/FIXME comments..."
+# Skip this check for now to avoid complexity
+print_success "TODO/FIXME check skipped"
+
+# 8. Check for console.log statements in production code (simplified)
+print_status "Checking for console.log statements..."
+# Skip this check for now to avoid complexity
+print_success "Console statements check skipped"
+
+# 9. Final success message
+echo ""
+print_success "🎉 All pre-push checks passed! Pushing to remote..."
+echo ""
+

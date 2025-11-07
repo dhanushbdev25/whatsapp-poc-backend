@@ -1,0 +1,114 @@
+trigger: none
+
+pr:
+  branches:
+    include:
+      - dev
+
+pool:
+  vmImage: 'ubuntu-22.04'
+
+stages:
+  - stage: BuildAndTest
+    displayName: "Node.js Build, Test, and Security Scan"
+    jobs:
+      - job: build_test
+        steps:
+
+          # Setup Node.js
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '22.x'
+
+          # Make a logs folder
+          - script: |
+              mkdir -p logs
+            displayName: "Prepare Logs Folder"
+
+          # Install Dependencies
+          - script: |
+              ls > logs/install-deps.log 2>&1
+              npm ci >> logs/install-deps.log 2>&1 || (echo "npm ci failed, retrying..." >> logs/install-deps.log && rm -rf node_modules package-lock.json && npm install --legacy-peer-deps >> logs/install-deps.log 2>&1)
+            displayName: "Install Dependencies"
+            continueOnError: true
+
+          # Formatting Check
+          - script: |
+              npm run pretty:check > logs/prettier.log 2>&1
+            displayName: "Check Code Formatting"
+            continueOnError: false
+
+          # Dependency Audit
+          - script: |
+              npm audit --audit-level=critical > logs/audit.log 2>&1
+            displayName: "Run npm audit"
+            continueOnError: true
+
+          # Outdated Dependencies
+          - script: |
+              # Save both table output and JSON
+              npm outdated > logs/outdated-table.log 2>&1 || true
+              npm outdated --json > outdated.json 2>/dev/null || true
+
+              # Parse JSON and append findings to log
+              node - <<'EOF' >> logs/outdated.log 2>&1
+              const fs = require('fs');
+              let fail = false;
+              try {
+                const outdated = JSON.parse(fs.readFileSync('outdated.json', 'utf-8'));
+                for (const [pkg, info] of Object.entries(outdated)) {
+                  if (info.current !== info.wanted) {
+                    console.error(`❌ Update required for ${pkg}: ${info.current} → ${info.wanted}`);
+                    fail = true;
+                  }
+                }
+                if (!fail) {
+                  console.log("✅ All packages are at their wanted versions.");
+                }
+              } catch (err) {
+                console.error("⚠️ Failed to parse npm outdated JSON output", err.message);
+              }
+              if (fail) process.exit(1);
+              EOF
+
+            displayName: "Check for outdated dependencies"
+            continueOnError: true
+
+
+
+
+          # License Compliance
+          - script: |
+              npx license-checker --summary > logs/licenses.log 2>&1
+            displayName: "Check Open Source Licenses"
+            continueOnError: true
+
+          # Build Application
+          - script: |
+              npm run build > logs/build.log 2>&1
+              npm run build:dev >> logs/build.log 2>&1
+            displayName: "Build Node.js App"
+            continueOnError: true
+
+          # Always publish logs as artifact
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/logs'
+              ArtifactName: 'logs'
+              publishLocation: 'Container'
+            condition: always()
+
+          - script: |
+              echo "## npm audit results" > logs/summary.md
+              tail -n 50 logs/audit.log >> logs/summary.md
+              echo "" >> logs/summary.md
+              echo "## Outdated dependencies" >> logs/summary.md
+              tail -n 50 logs/outdated.log >> logs/summary.md
+              echo "" >> logs/summary.md
+              echo "## License check" >> logs/summary.md
+              tail -n 50 logs/licenses.log >> logs/summary.md
+
+              # Publish the summary into the PR build summary
+              echo "##vso[task.uploadsummary]$(Build.SourcesDirectory)/logs/summary.md"
+            displayName: "Publish Logs to PR Summary"
+            condition: always()

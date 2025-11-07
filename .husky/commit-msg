@@ -1,0 +1,62 @@
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+# Get the commit message
+commit_message=$(cat "$1")
+
+# Define valid commit types
+valid_types="feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert"
+
+# Check if commit message follows conventional commits format
+if echo "$commit_message" | grep -qE "^($valid_types)(\(.+\))?: .+"; then
+    print_success "Commit message follows conventional commits format"
+else
+    print_error "Commit message must follow conventional commits format!"
+    echo ""
+    echo "Valid formats:"
+    echo "  feat: add new feature"
+    echo "  fix: fix a bug"
+    echo "  docs: update documentation"
+    echo "  style: formatting changes"
+    echo "  refactor: code refactoring"
+    echo "  perf: performance improvements"
+    echo "  test: add or update tests"
+    echo "  build: build system changes"
+    echo "  ci: CI/CD changes"
+    echo "  chore: maintenance tasks"
+    echo "  revert: revert previous commit"
+    echo ""
+    echo "Examples:"
+    echo "  feat(auth): add login functionality"
+    echo "  fix(ui): resolve button alignment issue"
+    echo "  docs: update README with setup instructions"
+    echo ""
+    exit 1
+fi
+
+# Check commit message length
+if [ ${#commit_message} -gt 100 ]; then
+    print_error "Commit message is too long (${#commit_message} characters). Keep it under 100 characters."
+    exit 1
+fi
+
+# Check for common issues
+if echo "$commit_message" | grep -qi "wip\|work in progress\|todo\|fixme"; then
+    print_error "Commit message contains WIP/TODO/FIXME. Please complete the work before committing."
+    exit 1
+fi
+
+print_success "Commit message validation passed!"
+
