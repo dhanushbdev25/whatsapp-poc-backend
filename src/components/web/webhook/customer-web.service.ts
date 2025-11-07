@@ -164,5 +164,72 @@ export class CustomerWebService {
 			return null;
 		}
 	}
+
+	/**
+	 * Get customer name by phone number or waId
+	 */
+	public async getCustomerName(phoneNumber: string, waId?: string): Promise<string | null> {
+		try {
+			// Try to find by phone first
+			let [customer] = await db
+				.select({
+					name: customerMaster.name,
+				})
+				.from(customerMaster)
+				.where(sql`${customerMaster.phone} = ${phoneNumber}`)
+				.limit(1);
+
+			// If not found and waId provided, try by customerID
+			if (!customer && waId) {
+				const customerID = this.parseWaIdToCustomerID(waId);
+				[customer] = await db
+					.select({
+						name: customerMaster.name,
+					})
+					.from(customerMaster)
+					.where(sql`${customerMaster.customerID} = ${customerID}`)
+					.limit(1);
+			}
+
+			return customer?.name || null;
+		} catch (error) {
+			logger.error('Error getting customer name', { error, phoneNumber, waId });
+			return null;
+		}
+	}
+
+	/**
+	 * Send interactive menu message
+	 */
+	public async sendInteractiveMenu(phoneNumber: string): Promise<void> {
+		await this.whatsappMessageService.sendInteractiveMenu(phoneNumber);
+	}
+
+	/**
+	 * Send Add Points CTA message
+	 */
+	public async sendAddPointsCTA(phoneNumber: string): Promise<void> {
+		await this.whatsappMessageService.sendAddPointsCTA(phoneNumber);
+	}
+
+	/**
+	 * Send catalog message
+	 */
+	public async sendCatalogMessage(phoneNumber: string, customerName?: string | null): Promise<void> {
+		const name = customerName || 'Customer';
+		await this.whatsappMessageService.sendCatalogMessage(phoneNumber, name);
+	}
+
+	/**
+	 * Send order confirmation message
+	 */
+	public async sendOrderConfirmation(
+		phoneNumber: string,
+		customerName: string,
+		itemsCount: number,
+		totalAmount: string,
+	): Promise<void> {
+		await this.whatsappMessageService.sendOrderConfirmation(phoneNumber, customerName, itemsCount, totalAmount);
+	}
 }
 

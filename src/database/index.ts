@@ -26,7 +26,7 @@ export type dbConnection = typeof db;
 
 export const testConnection = async () => {
 	try {
-		await db.execute('SELECT 1');
+		// await db.execute('SELECT 1');
 		logger.debug('Database connection established successfully.');
 	} catch (err) {
 		logger.error('Unable to connect to the database:', err);

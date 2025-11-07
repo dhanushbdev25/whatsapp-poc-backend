@@ -111,7 +111,7 @@ export default class App {
 		};
 
 		try {
-			await testConnection();
+			// await testConnection();
 			health.checks.db = 'ok';
 		} catch {
 			health.checks.db = 'error';

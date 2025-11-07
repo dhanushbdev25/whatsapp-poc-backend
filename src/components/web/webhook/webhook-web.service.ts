@@ -107,6 +107,35 @@ export class WebhookWebService {
 				await this.handleFlowResponse(message, phoneNumber, customerWaId);
 			}
 
+			// Handle MENU or BACK commands
+			if (messageType === 'text') {
+				const textContent = message?.text?.body?.toUpperCase()?.trim();
+				if (textContent === 'MENU' || textContent === 'BACK') {
+					await this.handleMenuRequest(phoneNumber);
+				} else if (textContent === 'ADD_POINTS' || textContent === 'ADD POINTS') {
+					await this.handleAddPointsRequest(phoneNumber);
+				} else if (textContent === 'VIEW_CATALOG' || textContent === 'CATALOG' || textContent === 'VIEW CATALOG') {
+					await this.handleCatalogRequest(phoneNumber, customerWaId);
+				}
+			}
+
+			// Handle button replies
+			if (messageType === 'interactive' && message?.interactive?.type === 'button_reply') {
+				const buttonId = message?.interactive?.button_reply?.id?.toUpperCase();
+				if (buttonId === 'MENU' || buttonId === 'BACK') {
+					await this.handleMenuRequest(phoneNumber);
+				} else if (buttonId === 'ADD_POINTS') {
+					await this.handleAddPointsRequest(phoneNumber);
+				} else if (buttonId === 'VIEW_CATALOG') {
+					await this.handleCatalogRequest(phoneNumber, customerWaId);
+				}
+			}
+
+			// Handle order events from catalog
+			if (messageType === 'order') {
+				await this.handleOrderEvent(message, phoneNumber, customerWaId);
+			}
+
 			const messageContent = this.extractMessageContent(message);
 
 			logger.info('Message content extracted', {
@@ -277,7 +306,7 @@ export class WebhookWebService {
 			// }
 
 			// // Create customer from flow data using wa_id as customer ID
-			// const customer = await this.customerService.createCustomerFromFlow(flowData, phoneNumber, waId);
+			const customer = await this.customerService.createCustomerFromFlow(flowData, phoneNumber, waId);
 
 			logger.info('Customer created successfully from WhatsApp Flow', {
 				phoneNumber,
@@ -312,6 +341,119 @@ export class WebhookWebService {
 		} catch (error) {
 			logger.error('Failed to parse wa_id to customerID', { error, waId });
 			throw error;
+		}
+	}
+
+	/**
+	 * Handle MENU or BACK request - send interactive menu
+	 */
+	private async handleMenuRequest(phoneNumber: string): Promise<void> {
+		try {
+			logger.info('Menu request received', { phoneNumber });
+			await this.customerService.sendInteractiveMenu(phoneNumber);
+		} catch (error) {
+			logger.error('Error handling menu request', {
+				error,
+				phoneNumber,
+			});
+		}
+	}
+
+	/**
+	 * Handle ADD_POINTS request - send CTA URL message
+	 */
+	private async handleAddPointsRequest(phoneNumber: string): Promise<void> {
+		try {
+			logger.info('Add Points request received', { phoneNumber });
+			await this.customerService.sendAddPointsCTA(phoneNumber);
+		} catch (error) {
+			logger.error('Error handling add points request', {
+				error,
+				phoneNumber,
+			});
+		}
+	}
+
+	/**
+	 * Handle VIEW_CATALOG or CATALOG request - send catalog message
+	 */
+	private async handleCatalogRequest(phoneNumber: string, waId?: string): Promise<void> {
+		try {
+			logger.info('Catalog request received', { phoneNumber, waId });
+			// const customerName = await this.customerService.getCustomerName(phoneNumber, waId);
+			await this.customerService.sendCatalogMessage(phoneNumber, "customerName");
+		} catch (error) {
+			logger.error('Error handling catalog request', {
+				error,
+				phoneNumber,
+				waId,
+			});
+		}
+	}
+
+	/**
+	 * Handle order event from catalog - send order confirmation
+	 */
+	private async handleOrderEvent(message: any, phoneNumber: string, waId?: string): Promise<void> {
+		try {
+			logger.info('Order event received from catalog', {
+				phoneNumber,
+				waId,
+				messageId: message?.id,
+				orderId: message?.order?.id,
+			});
+
+			const order = message?.order;
+			if (!order) {
+				logger.warn('Order event received but no order data found', {
+					phoneNumber,
+					messageId: message?.id,
+				});
+				return;
+			}
+
+			// Extract order details
+			// WhatsApp order structure can have either 'products' or 'product_items' array
+			const products = order?.products || order?.product_items || [];
+			const itemsCount = products.length || 0;
+			
+			// Calculate total from order items
+			// Order items typically have: product_retailer_id, quantity, item_price, currency
+			let totalAmount = 0;
+			for (const product of products) {
+				const itemPrice = parseFloat(product?.item_price || 0);
+				const quantity = parseInt(product?.quantity || 1, 10);
+				totalAmount += itemPrice * quantity;
+			}
+
+			// Format total amount (assuming NGN currency, adjust as needed)
+			const currency = products[0]?.currency || 'NGN';
+			const formattedTotal = `${totalAmount} ${currency}`;
+
+			// Get customer name
+			const customerName = await this.customerService.getCustomerName(phoneNumber, waId) || 'Customer';
+
+			// Send order confirmation message
+			await this.customerService.sendOrderConfirmation(
+				phoneNumber,
+				customerName,
+				itemsCount,
+				formattedTotal,
+			);
+
+			logger.info('Order confirmation sent successfully', {
+				phoneNumber,
+				customerName,
+				itemsCount,
+				totalAmount: formattedTotal,
+			});
+		} catch (error) {
+			logger.error('Error handling order event', {
+				error,
+				phoneNumber,
+				waId,
+				messageId: message?.id,
+			});
 		}
 	}
 

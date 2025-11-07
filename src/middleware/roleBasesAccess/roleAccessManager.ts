@@ -64,14 +64,14 @@ export class RoleBaseAccess {
 		}
 	}
 
-	static init(intervalMs: number = 10 * 60 * 1000) {
-		this.getRoleModuleData();
-		this.intervalId = setInterval(
-			() => this.getRoleModuleData(),
-			intervalMs,
-		);
-		logger.info('[RoleBaseAccess] Interval started');
-	}
+	// static init(intervalMs: number = 10 * 60 * 1000) {
+	// 	this.getRoleModuleData();
+	// 	this.intervalId = setInterval(
+	// 		() => this.getRoleModuleData(),
+	// 		intervalMs,
+	// 	);
+	// 	logger.info('[RoleBaseAccess] Interval started');
+	// }
 
 	static stopIt() {
 		if (this.intervalId) clearInterval(this.intervalId);

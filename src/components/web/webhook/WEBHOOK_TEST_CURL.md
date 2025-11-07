@@ -571,6 +571,497 @@ curl -X POST "http://localhost:8080/web/webhook" \
 
 ---
 
+## 4. Menu/BACK Command Handling (POST)
+
+When a user sends "MENU" or "BACK" (either as text or button reply), the system automatically sends an interactive menu with buttons.
+
+### Sample Text Message - MENU Command
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "text",
+                  "text": {
+                    "body": "MENU"
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**Expected Response:**
+- Status: `200 OK`
+- Interactive menu message sent to user with buttons (VIEW_CATALOG, VIEW_BALANCE, ADD_POINTS)
+
+### Sample Text Message - BACK Command
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "text",
+                  "text": {
+                    "body": "BACK"
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+### Sample Button Reply - MENU/BACK Button
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "interactive",
+                  "interactive": {
+                    "type": "button_reply",
+                    "button_reply": {
+                      "id": "MENU",
+                      "title": "Menu"
+                    }
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**Expected Behavior:**
+- Case-insensitive matching (MENU, menu, Menu all work)
+- Sends interactive menu with:
+  - Header: Image from hardcoded URL
+  - Body: Welcome message (hardcoded)
+  - Footer: Powered by message (hardcoded)
+  - Buttons: VIEW_CATALOG, VIEW_BALANCE, ADD_POINTS
+
+**Expected Logs:**
+- `"Menu request received"` - Confirms MENU/BACK detection
+- `"Interactive menu message sent successfully"` - Confirms menu sent
+
+---
+
+## 5. ADD_POINTS Command Handling (POST)
+
+When a user sends "ADD_POINTS" or "ADD POINTS" (either as text or button reply), the system automatically sends a CTA URL message for scanning QR codes.
+
+### Sample Text Message - ADD_POINTS Command
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "text",
+                  "text": {
+                    "body": "ADD_POINTS"
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**Expected Response:**
+- Status: `200 OK`
+- CTA URL message sent to user with button linking to `${APP_URI}/add-points`
+
+### Sample Text Message - ADD POINTS (with space)
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "text",
+                  "text": {
+                    "body": "ADD POINTS"
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+### Sample Button Reply - ADD_POINTS Button
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "interactive",
+                  "interactive": {
+                    "type": "button_reply",
+                    "button_reply": {
+                      "id": "ADD_POINTS",
+                      "title": "➕ Add Points"
+                    }
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**Expected Behavior:**
+- Case-insensitive matching (ADD_POINTS, add_points, ADD POINTS all work)
+- Sends interactive CTA URL message with:
+  - Header: "Add Your Loyalty Points"
+  - Body: Instructions for scanning QR code
+  - Footer: "🌼 Powered by Lush Loyalty Program"
+  - Button: "➕ Add Points" linking to `${APP_URI}/add-points`
+
+**Expected Logs:**
+- `"Add Points request received"` - Confirms ADD_POINTS detection
+- `"Add Points CTA message sent successfully"` - Confirms CTA message sent
+
+**Note:** The URL uses `APP_URI` from your environment variables. Make sure `APP_URI` is set correctly (e.g., `https://waapppoc.azurewebsites.net`).
+
+---
+
+## 6. VIEW_CATALOG Command Handling (POST)
+
+When a user sends "VIEW_CATALOG", "CATALOG", or "VIEW CATALOG" (either as text or button reply), the system automatically sends a catalog template message.
+
+### Sample Text Message - VIEW_CATALOG Command
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "text",
+                  "text": {
+                    "body": "VIEW_CATALOG"
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+### Sample Text Message - CATALOG Command
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "text",
+                  "text": {
+                    "body": "CATALOG"
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+### Sample Button Reply - VIEW_CATALOG Button
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "interactive",
+                  "interactive": {
+                    "type": "button_reply",
+                    "button_reply": {
+                      "id": "VIEW_CATALOG",
+                      "title": "🛍️ View Catalog"
+                    }
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**Expected Behavior:**
+- Case-insensitive matching (VIEW_CATALOG, catalog, VIEW CATALOG all work)
+- Retrieves customer name from database (if available)
+- Sends catalog template message with:
+  - Template: `lush_catalouge`
+  - Body parameter: Customer name (or "Customer" if not found)
+  - Catalog button attached
+
+**Expected Logs:**
+- `"Catalog request received"` - Confirms VIEW_CATALOG detection
+- `"Catalog message sent successfully"` - Confirms catalog message sent
+
+---
+
+## 7. Order Event Handling (POST)
+
+When a user places an order from the catalog, WhatsApp sends an order event. The system automatically processes the order and sends a payment confirmation CTA message.
+
+### Sample Order Event from Catalog
+```bash
+curl -X POST "http://localhost:8080/web/webhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object": "whatsapp_business_account",
+    "entry": [
+      {
+        "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+        "changes": [
+          {
+            "value": {
+              "messaging_product": "whatsapp",
+              "metadata": {
+                "display_phone_number": "15550555555",
+                "phone_number_id": "PHONE_NUMBER_ID"
+              },
+              "contacts": [
+                {
+                  "wa_id": "918610031033"
+                }
+              ],
+              "messages": [
+                {
+                  "from": "918610031033",
+                  "id": "wamid.XXX",
+                  "timestamp": "1234567890",
+                  "type": "order",
+                  "order": {
+                    "id": "ORDER_ID_123",
+                    "catalog_id": "CATALOG_ID",
+                    "product_items": [
+                      {
+                        "product_retailer_id": "PRODUCT_1",
+                        "quantity": "2",
+                        "item_price": "500",
+                        "currency": "NGN"
+                      },
+                      {
+                        "product_retailer_id": "PRODUCT_2",
+                        "quantity": "1",
+                        "item_price": "1000",
+                        "currency": "NGN"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "field": "messages"
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**Expected Behavior:**
+- Extracts order details (items count, total amount)
+- Retrieves customer name from database
+- Sends order confirmation CTA message with:
+  - Header: "💳 Complete Your Payment"
+  - Body: Personalized message with order summary (items count and total)
+  - Footer: "🌼 Powered by Lush Loyalty Program"
+  - Button: "Pay Now" linking to `${APP_URI}/payment`
+
+**Expected Logs:**
+- `"Order event received from catalog"` - Confirms order detection
+- `"Order confirmation sent successfully"` - Confirms order confirmation sent
+
+**Note:** 
+- Order details are extracted from `message.order.product_items` array
+- Total is calculated from `item_price * quantity` for each product
+- Currency is extracted from the first product (defaults to NGN)
+- Orders are NOT stored in the database (as per requirements)
+
+---
+
 ## Environment Setup
 
 Before testing, make sure you have set the following WhatsApp configuration in your `.env` file:
@@ -601,7 +1092,11 @@ WHATSAPP_ENROLLMENT_HEADER_IMAGE_URL=https://mtbsapoc.blob.core.windows.net/what
 - `WHATSAPP_ENROLLMENT_TEMPLATE_NAME` - Default template name (can be overridden via flow data `template_name` or `templateName`)
 - `WHATSAPP_ENROLLMENT_HEADER_IMAGE_URL` - Default header image URL (can be overridden via flow data `header_image_url` or `headerImageUrl`)
 
-**Note:** Template name and header image URL can be passed in the flow data itself, making them configurable per flow without changing environment variables. The priority is: Flow Data → Environment Variable → Hardcoded Default
+**Note:** Interactive menu content (header image, body text, footer) is hardcoded in the service and cannot be configured via environment variables.
+
+**Note:** 
+- Template name and header image URL can be passed in the flow data itself, making them configurable per flow without changing environment variables. The priority is: Flow Data → Environment Variable → Hardcoded Default
+- MENU and BACK commands (text or button) automatically trigger the interactive menu to be sent
 
 Replace `YOUR_VERIFY_TOKEN` in the GET request with the same value from your `.env` file.
 
