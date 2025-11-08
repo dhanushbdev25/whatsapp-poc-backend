@@ -102,8 +102,58 @@ export class WebhookWebService {
 				phoneNumberId: metadata?.phone_number_id,
 			});
 
+			// Log interactive message structure for debugging
+			if (messageType === 'interactive') {
+				logger.info('Interactive message structure', {
+					phoneNumber,
+					interactiveType: message?.interactive?.type,
+					interactiveKeys: Object.keys(message?.interactive || {}),
+					hasFlowResponseJson: !!message?.interactive?.flow_response_json,
+					hasFlowResponseData: !!message?.interactive?.flow_response_data,
+					hasButtonReply: !!message?.interactive?.button_reply,
+					fullInteractive: JSON.stringify(message?.interactive).substring(0, 1000),
+				});
+			}
+
 			// Handle WhatsApp Flow responses
-			if (messageType === 'interactive' && message?.interactive?.type === 'flow') {
+			// Check for flow type explicitly OR check for flow data fields (more flexible)
+			let isFlowMessage = false;
+			if (messageType === 'interactive') {
+				const interactive = message?.interactive;
+				
+				// Check explicit flow type
+				if (interactive?.type === 'flow') {
+					isFlowMessage = true;
+				}
+				// Check for flow response data fields
+				else if (interactive?.flow_response_json || interactive?.flow_response_data) {
+					isFlowMessage = true;
+				}
+				// Check button_reply payload for flow_token
+				else if (interactive?.button_reply?.payload) {
+					try {
+						const payload = typeof interactive.button_reply.payload === 'string'
+							? JSON.parse(interactive.button_reply.payload)
+							: interactive.button_reply.payload;
+						
+						if (payload?.flow_token || payload?.screen === 'COMPLETE' || payload?.data) {
+							isFlowMessage = true;
+						}
+					} catch (e) {
+						// If payload is not JSON, check if it's a flow-related string
+						if (typeof interactive.button_reply.payload === 'string' && 
+							interactive.button_reply.payload.includes('flow')) {
+							isFlowMessage = true;
+						}
+					}
+				}
+			}
+
+			if (isFlowMessage) {
+				logger.info('Flow message detected, processing...', {
+					phoneNumber,
+					interactiveType: message?.interactive?.type,
+				});
 				await this.handleFlowResponse(message, phoneNumber, customerWaId);
 			}
 
@@ -182,22 +232,19 @@ export class WebhookWebService {
 		}
 	}
 
-	/**
-	 * Handle WhatsApp Flow response
-	 */
-	private async handleFlowResponse(message: any, phoneNumber: string, waId: string): Promise<void> {
-		try {
-			const interactive = message?.interactive;
-			
-			if (interactive?.type !== 'flow') {
-				return;
-			}
-
-			// Log the full interactive structure for debugging
-			logger.info('Flow interactive message received', {
-				phoneNumber,
-				interactive: JSON.stringify(interactive).substring(0, 1000),
-			});
+		/**
+		 * Handle WhatsApp Flow response
+		 */
+		private async handleFlowResponse(message: any, phoneNumber: string, waId: string): Promise<void> {
+			try {
+				const interactive = message?.interactive;
+				
+				// Log the full interactive structure for debugging
+				logger.info('Flow interactive message received', {
+					phoneNumber,
+					interactiveType: interactive?.type,
+					interactive: JSON.stringify(interactive).substring(0, 1000),
+				});
 
 			// Extract flow data from various possible locations
 			let flowData: any;
@@ -245,17 +292,20 @@ export class WebhookWebService {
 						? JSON.parse(interactive.button_reply.payload)
 						: interactive.button_reply.payload;
 					
-					if (payload?.flow_token) {
+					// If it's just a flow_token, wait for completion
+					if (payload?.flow_token && !payload?.data && !payload?.screen) {
 						logger.info('Flow token received, waiting for flow completion', {
 							phoneNumber,
 							flowToken: payload.flow_token,
 						});
 						return;
 					}
+					// Otherwise treat as flow data
 					flowData = payload;
 					logger.info('Flow data extracted from button_reply payload', {
 						phoneNumber,
 						screen: flowData?.screen,
+						hasData: !!flowData?.data,
 					});
 				} catch (parseError) {
 					logger.error('Failed to parse button_reply payload', {
@@ -276,10 +326,21 @@ export class WebhookWebService {
 			}
 
 			// Check if flow is completed
-			if (flowData?.screen !== 'COMPLETE' && flowData?.version) {
+			// Flow is complete if:
+			// 1. screen === 'COMPLETE'
+			// 2. OR if there's data but no version (completed flow without version)
+			// 3. OR if there's data and screen is not present (some flows don't have screen field)
+			const isCompleted = 
+				flowData?.screen === 'COMPLETE' ||
+				(flowData?.data && !flowData?.version) ||
+				(flowData?.data && flowData?.screen === undefined);
+
+			if (!isCompleted && flowData?.version && flowData?.screen !== 'COMPLETE') {
 				logger.info('Flow response received but not completed', {
 					phoneNumber,
 					screen: flowData?.screen,
+					hasData: !!flowData?.data,
+					hasVersion: !!flowData?.version,
 				});
 				return;
 			}
@@ -294,25 +355,25 @@ export class WebhookWebService {
 			const customerID = this.parseWaIdToCustomerID(waId);
 
 			// Check if customer already exists by customer ID (wa_id)
-			// const existingCustomer = await this.customerService.findCustomerByCustomerID(customerID);
+			const existingCustomer = await this.customerService.findCustomerByCustomerID(customerID);
 			
-			// if (existingCustomer) {
-			// 	logger.info('Customer already exists, skipping creation', {
-			// 		phoneNumber,
-			// 		waId,
-			// 		customerID: existingCustomer.customerID,
-			// 	});
-			// 	return;
-			// }
+			if (existingCustomer) {
+				logger.info('Customer already exists, skipping creation', {
+					phoneNumber,
+					waId,
+					customerID: existingCustomer.customerID,
+				});
+				return;
+			}
 
-			// // Create customer from flow data using wa_id as customer ID
+			// Create customer from flow data using wa_id as customer ID
 			const customer = await this.customerService.createCustomerFromFlow(flowData, phoneNumber, waId);
 
 			logger.info('Customer created successfully from WhatsApp Flow', {
 				phoneNumber,
 				waId,
-				// customerID: customer.customerID,
-				// customerId: customer.id,
+				customerID: customer.customerID,
+				customerId: customer.id,
 			});
 		} catch (error) {
 			logger.error('Error handling flow response', {

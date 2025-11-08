@@ -14,7 +14,7 @@ export class CustomerWebService {
 
 	/**
 	 * Parse WhatsApp ID (wa_id) to integer
-	 * wa_id is typically a string like "918610031033", we need to convert it to integer
+	 * wa_id is typically a string like "91XXXXXXXXXX", we need to convert it to integer
 	 */
 	private parseWaIdToCustomerID(waId: string): number {
 		try {
@@ -77,17 +77,17 @@ export class CustomerWebService {
 			};
 
 			// Insert customer
-			// const [customer] = await db
-			// 	.insert(customerMaster)
-			// 	.values(customerData)
-			// 	.returning({ id: customerMaster.id, customerID: customerMaster.customerID });
+			const [customer] = await db
+				.insert(customerMaster)
+				.values(customerData)
+				.returning({ id: customerMaster.id, customerID: customerMaster.customerID });
 
-			// if (!customer) {
-			// 	throw new Error('Failed to create customer');
-			// }
+			if (!customer) {
+				throw new Error('Failed to create customer');
+			}
 
 			logger.info('Customer created from WhatsApp Flow', {
-				// customerID: customer.customerID,
+				customerID: customer.customerID,
 				phone,
 				email,
 				name: fullName,
@@ -104,7 +104,7 @@ export class CustomerWebService {
 					.catch((error) => {
 						logger.error('Failed to send enrollment confirmation message', {
 							error,
-							// customerID: customer.customerID,
+							customerID: customer.customerID,
 							phone,
 							customerName: fullName,
 						});
