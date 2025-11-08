@@ -91,10 +91,13 @@ export class CustomerWebService {
 				email: email?.toLowerCase(),
 				phone,
 				address,
-				state: undefined, // Not collected in flow
+				state: city,
 				pincode,
 				gender: undefined, // Not collected in flow
 				isActive: true,
+				createdBy: 'whatsapp-flow',
+				updatedBy: 'whatsapp-flow',
+				latestActive: new Date(),
 			};
 
 			// Insert customer
@@ -278,12 +281,14 @@ export class CustomerWebService {
 		customerName: string,
 		itemsCount: number,
 		totalAmount: string,
+		orderId: string,
 	): Promise<void> {
 		await this.whatsappMessageService.sendOrderConfirmation(
 			phoneNumber,
 			customerName,
 			itemsCount,
 			totalAmount,
+			orderId,
 		);
 	}
 }

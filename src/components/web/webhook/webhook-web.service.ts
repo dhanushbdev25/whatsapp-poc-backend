@@ -557,10 +557,13 @@ export class WebhookWebService {
 	): Promise<void> {
 		try {
 			logger.info('Catalog request received', { phoneNumber, waId });
-			// const customerName = await this.customerService.getCustomerName(phoneNumber, waId);
+			const customerName = await this.customerService.getCustomerName(
+				phoneNumber,
+				waId,
+			);
 			await this.customerService.sendCatalogMessage(
 				phoneNumber,
-				'customerName',
+				customerName,
 			);
 		} catch (error) {
 			logger.error('Error handling catalog request', {
@@ -615,21 +618,39 @@ export class WebhookWebService {
 			const formattedTotal = `${totalAmount} ${currency}`;
 
 			// Get customer name
-			// const customerName = await this.customerService.getCustomerName(phoneNumber, waId) || 'Customer';
+			const customerName =
+				(await this.customerService.getCustomerName(
+					phoneNumber,
+					waId,
+				)) || 'Customer';
+
+			logger.info('Order details', {
+				products: order?.products,
+				productItems: order?.product_items,
+				itemsCount,
+				totalAmount,
+				currency,
+				formattedTotal,
+				customerName,
+				messageId: message?.id,
+				orderId: message?.order?.id,
+			});
 
 			// Send order confirmation message
 			await this.customerService.sendOrderConfirmation(
 				phoneNumber,
-				'customerName',
+				customerName,
 				itemsCount,
 				formattedTotal,
+				message?.order?.id,
 			);
 
 			logger.info('Order confirmation sent successfully', {
 				phoneNumber,
-				// customerName,
+				customerName,
 				itemsCount,
 				totalAmount: formattedTotal,
+				orderId: message?.order?.id,
 			});
 		} catch (error) {
 			logger.error('Error handling order event', {

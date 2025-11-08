@@ -296,13 +296,14 @@ export class WhatsAppMessageService {
 		customerName: string,
 		itemsCount: number,
 		totalAmount: string,
+		orderId: string,
 	): Promise<void> {
 		try {
 			const headerText = '💳 Complete Your Payment';
 			const bodyText = `Hey ${customerName} 🌸\nYou're almost there! ✨\n\nYour selected items are waiting to be processed — please complete your payment to confirm your order. 💖\n\n🛍️ *Order Summary:*\n📦 Items: *${itemsCount}*\n💰 Total: *${totalAmount}*\n\nOnce the payment is confirmed, we'll begin preparing your order for dispatch right away! 🚚`;
 			const footerText = '🌼 Powered by Lush Loyalty Program';
 			const displayText = 'Pay Now';
-			const ctaUrl = `${env.APP_URI}/payment`;
+			const ctaUrl = `${env.APP_URI}/order/${orderId}/payment`;
 
 			const payload = {
 				messaging_product: 'whatsapp',
