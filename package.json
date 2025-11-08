@@ -9,7 +9,7 @@
         "clean": "shx rm -rf build",
         "build": "npm run clean && tsc -p tsconfig.json && tsc-alias -p tsconfig.json && shx cp -R src/assets build/src",
         "build:dev": "cross-env NODE_ENV=dev && shx cp .env.dev ./build/.env.dev",
-        "build:qas": "cross-env NODE_ENV=qas npm run build",
+        "build:qas": "cross-env NODE_ENV=qas npm run build && shx cp /etc/secrets/.env.qas ./build/.env.qas",
         "build:uat": "cross-env NODE_ENV=uat && shx cp .env.uat ./build/.env.uat",
         "build:prod": "cross-env NODE_ENV=prod && shx cp .env.prod ./build/.env.prod",
         "start": "node -r tsconfig-paths/register build/src/server.js",
