@@ -45,15 +45,38 @@ export class CustomerWebService {
 			// Extract data from flow response
 			const flowResponse = flowData?.data || flowData;
 			
-			// Map flow fields to customer fields
-			const firstName = flowResponse?.firstname || flowResponse?.firstName || '';
-			const lastName = flowResponse?.lastname || flowResponse?.lastName || '';
+			// Helper function to find field by multiple possible names (handles nfm_reply format like screen_0_First_Name_0)
+			const getField = (...searchTerms: string[]): string | undefined => {
+				if (!flowResponse) return undefined;
+				
+				// First try exact matches
+				for (const term of searchTerms) {
+					if (flowResponse[term]) {
+						return flowResponse[term];
+					}
+				}
+				
+				// Then try case-insensitive partial matches (for nfm_reply format)
+				const lowerTerms = searchTerms.map(t => t.toLowerCase().replace(/_/g, ''));
+				for (const key in flowResponse) {
+					const lowerKey = key.toLowerCase().replace(/_/g, '');
+					if (lowerTerms.some(term => lowerKey.includes(term))) {
+						return flowResponse[key];
+					}
+				}
+				
+				return undefined;
+			};
+			
+			// Map flow fields to customer fields (handles both standard and nfm_reply formats)
+			const firstName = getField('firstname', 'firstName', 'First_Name', 'first_name') || '';
+			const lastName = getField('lastname', 'lastName', 'Last_Name', 'last_name') || '';
 			const fullName = `${firstName} ${lastName}`.trim() || undefined;
-			const email = flowResponse?.email || flowResponse?.email_id || undefined;
-			const phone = phoneNumber || flowResponse?.phone || flowResponse?.phone_no || undefined;
-			const streetAddress = flowResponse?.street_address || flowResponse?.streetAddress || flowResponse?.address || undefined;
-			const city = flowResponse?.city || undefined;
-			const pincode = flowResponse?.pincode || flowResponse?.pin_code || flowResponse?.postal_code || undefined;
+			const email = getField('email', 'email_id', 'Email_ID', 'email_id');
+			const phone = phoneNumber || getField('phone', 'phone_no', 'Phone_No', 'phone_no');
+			const streetAddress = getField('street_address', 'streetAddress', 'Street_Address', 'address');
+			const city = getField('city', 'City');
+			const pincode = getField('pincode', 'pin_code', 'postal_code', 'Pincode');
 
 			// Combine street address and city for address field
 			const address = streetAddress && city 

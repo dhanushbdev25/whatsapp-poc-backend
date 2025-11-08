@@ -111,6 +111,7 @@ export class WebhookWebService {
 					hasFlowResponseJson: !!message?.interactive?.flow_response_json,
 					hasFlowResponseData: !!message?.interactive?.flow_response_data,
 					hasButtonReply: !!message?.interactive?.button_reply,
+					hasNfmReply: !!message?.interactive?.nfm_reply,
 					fullInteractive: JSON.stringify(message?.interactive).substring(0, 1000),
 				});
 			}
@@ -123,6 +124,10 @@ export class WebhookWebService {
 				
 				// Check explicit flow type
 				if (interactive?.type === 'flow') {
+					isFlowMessage = true;
+				}
+				// Check for nfm_reply (Native Flow Message reply) - new WhatsApp format
+				else if (interactive?.type === 'nfm_reply' || interactive?.nfm_reply) {
 					isFlowMessage = true;
 				}
 				// Check for flow response data fields
@@ -249,8 +254,35 @@ export class WebhookWebService {
 			// Extract flow data from various possible locations
 			let flowData: any;
 			
-			// Try flow_response_json first (most common location)
-			if (interactive?.flow_response_json) {
+			// Try nfm_reply first (Native Flow Message - new WhatsApp format)
+			if (interactive?.nfm_reply?.response_json) {
+				try {
+					const responseJson = typeof interactive.nfm_reply.response_json === 'string'
+						? JSON.parse(interactive.nfm_reply.response_json)
+						: interactive.nfm_reply.response_json;
+					
+					// nfm_reply format has the data directly in response_json
+					// Extract the actual flow data from the response
+					flowData = {
+						data: responseJson,
+						screen: 'COMPLETE', // nfm_reply is sent when flow is completed
+					};
+					
+					logger.info('Flow data extracted from nfm_reply.response_json', {
+						phoneNumber,
+						hasData: !!flowData?.data,
+						responseKeys: Object.keys(responseJson || {}),
+					});
+				} catch (parseError) {
+					logger.error('Failed to parse nfm_reply.response_json', {
+						error: parseError,
+						response_json: interactive.nfm_reply.response_json,
+					});
+					return;
+				}
+			}
+			// Try flow_response_json (legacy/common location)
+			else if (interactive?.flow_response_json) {
 				try {
 					flowData = typeof interactive.flow_response_json === 'string'
 						? JSON.parse(interactive.flow_response_json)
