@@ -25,22 +25,31 @@ export default class WebhookWebController extends BaseApi {
 			throw result.error;
 		}
 
-		const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = result.data;
+		const {
+			'hub.mode': mode,
+			'hub.verify_token': token,
+			'hub.challenge': challenge,
+		} = result.data;
 
-		const challengeResponse = this.webhookService.verifyWebhook(mode, token, challenge);
+		const challengeResponse = this.webhookService.verifyWebhook(
+			mode,
+			token,
+			challenge,
+		);
 
 		res.status(StatusCodes.OK).send(challengeResponse);
 	}
 
-	public async handleWebhookEvents(req: Request, res: Response): Promise<void> {
+	public async handleWebhookEvents(
+		req: Request,
+		res: Response,
+	): Promise<void> {
 		res.locals.data = { received: true };
 		res.locals.message = 'Webhook event received';
 		super.send(res, StatusCodes.OK);
 
-		this.webhookService
-			.processWebhookPayload(req.body)
-			.catch((error) => {
-				logger.error('Error processing webhook events', { error });
-			});
+		this.webhookService.processWebhookPayload(req.body).catch((error) => {
+			logger.error('Error processing webhook events', { error });
+		});
 	}
 }

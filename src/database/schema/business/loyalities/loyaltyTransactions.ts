@@ -4,6 +4,7 @@ import {
 	pgTable,
 	uuid,
 	integer,
+	bigint,
 	text,
 	timestamp,
 	jsonb,
@@ -15,7 +16,7 @@ import { loyaltyAccounts } from './loyaltyAccounts';
 
 export const loyaltyTransactions = pgTable('loyalty_transactions', {
 	id: uuid('id').defaultRandom().primaryKey(),
-	customerID: integer('customer_id')
+	customerID: bigint('customer_id', { mode: 'number' })
 		.notNull()
 		.references(() => customerMaster.customerID, { onDelete: 'cascade' }),
 	account_id: uuid('account_id')

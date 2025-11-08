@@ -1,6 +1,6 @@
 // src/db/schema/customerGroupMembers.ts
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { pgTable, integer, timestamp, unique } from 'drizzle-orm/pg-core';
+import { pgTable, bigint, timestamp, unique } from 'drizzle-orm/pg-core';
 import { uuid } from 'drizzle-orm/pg-core';
 import { users } from '../../users';
 import { customerMaster } from '../customer/customers';
@@ -13,7 +13,7 @@ export const customerGroupMembers = pgTable(
 		groupId: uuid('group_id')
 			.notNull()
 			.references(() => customerGroups.id, { onDelete: 'cascade' }),
-		customerID: integer('customer_id')
+		customerID: bigint('customer_id', { mode: 'number' })
 			.notNull()
 			.references(() => customerMaster.customerID, {
 				onDelete: 'cascade',

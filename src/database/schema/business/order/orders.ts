@@ -7,7 +7,7 @@ import {
 	text,
 	timestamp,
 	jsonb,
-	integer,
+	bigint,
 	pgEnum,
 } from 'drizzle-orm/pg-core';
 import { users } from '../../users';
@@ -24,7 +24,7 @@ export const orderStatusEnum = pgEnum('order_status', [
 export const orders = pgTable('orders', {
 	id: uuid('id').defaultRandom().primaryKey(),
 
-	customerID: integer('customer_id')
+	customerID: bigint('customer_id', { mode: 'number' })
 		.notNull()
 		.references(() => customerMaster.customerID, { onDelete: 'cascade' }),
 

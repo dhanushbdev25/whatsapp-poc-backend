@@ -1,8 +1,9 @@
 import { StatusCodes } from 'http-status-codes';
+import { CustomerWebService } from './customer-web.service';
+import { parseWaIdToCustomerID } from './webhook-utils';
 import AppError from '@/abstractions/AppError';
 import env from '@/env';
 import logger from '@/lib/logger';
-import { CustomerWebService } from './customer-web.service';
 
 export class WebhookWebService {
 	private customerService: CustomerWebService;
@@ -61,21 +62,37 @@ export class WebhookWebService {
 			for (const change of entry.changes) {
 				const value = change?.value;
 
-				if (value?.messages && Array.isArray(value.messages) && value.messages.length > 0) {
+				if (
+					value?.messages &&
+					Array.isArray(value.messages) &&
+					value.messages.length > 0
+				) {
 					// Extract wa_id from contacts if available
-					const waId = value?.contacts?.[0]?.wa_id || value?.messages[0]?.from;
-					await this.processMessages(value.messages, value.metadata, waId);
+					const waId =
+						value?.contacts?.[0]?.wa_id || value?.messages[0]?.from;
+					await this.processMessages(
+						value.messages,
+						value.metadata,
+						waId,
+					);
 				}
 
-				if (value?.statuses && Array.isArray(value.statuses) && value.statuses.length > 0) {
+				if (
+					value?.statuses &&
+					Array.isArray(value.statuses) &&
+					value.statuses.length > 0
+				) {
 					await this.processStatuses(value.statuses);
 				}
 
 				if (!value?.messages && !value?.statuses) {
-					logger.info('Webhook event received (not messages/statuses)', {
-						field: change?.field,
-						value: JSON.stringify(value).substring(0, 200),
-					});
+					logger.info(
+						'Webhook event received (not messages/statuses)',
+						{
+							field: change?.field,
+							value: JSON.stringify(value).substring(0, 200),
+						},
+					);
 				}
 			}
 		}
@@ -84,7 +101,11 @@ export class WebhookWebService {
 	/**
 	 * Process incoming messages from users
 	 */
-	private async processMessages(messages: any[], metadata?: any, waId?: string): Promise<void> {
+	private async processMessages(
+		messages: any[],
+		metadata?: any,
+		waId?: string,
+	): Promise<void> {
 		for (const message of messages) {
 			if (!message) continue;
 
@@ -108,11 +129,15 @@ export class WebhookWebService {
 					phoneNumber,
 					interactiveType: message?.interactive?.type,
 					interactiveKeys: Object.keys(message?.interactive || {}),
-					hasFlowResponseJson: !!message?.interactive?.flow_response_json,
-					hasFlowResponseData: !!message?.interactive?.flow_response_data,
+					hasFlowResponseJson:
+						!!message?.interactive?.flow_response_json,
+					hasFlowResponseData:
+						!!message?.interactive?.flow_response_data,
 					hasButtonReply: !!message?.interactive?.button_reply,
 					hasNfmReply: !!message?.interactive?.nfm_reply,
-					fullInteractive: JSON.stringify(message?.interactive).substring(0, 1000),
+					fullInteractive: JSON.stringify(
+						message?.interactive,
+					).substring(0, 1000),
 				});
 			}
 
@@ -121,33 +146,54 @@ export class WebhookWebService {
 			let isFlowMessage = false;
 			if (messageType === 'interactive') {
 				const interactive = message?.interactive;
-				
+
 				// Check explicit flow type
 				if (interactive?.type === 'flow') {
 					isFlowMessage = true;
 				}
 				// Check for nfm_reply (Native Flow Message reply) - new WhatsApp format
-				else if (interactive?.type === 'nfm_reply' || interactive?.nfm_reply) {
+				else if (
+					interactive?.type === 'nfm_reply' ||
+					interactive?.nfm_reply
+				) {
 					isFlowMessage = true;
 				}
 				// Check for flow response data fields
-				else if (interactive?.flow_response_json || interactive?.flow_response_data) {
+				else if (
+					interactive?.flow_response_json ||
+					interactive?.flow_response_data
+				) {
 					isFlowMessage = true;
 				}
 				// Check button_reply payload for flow_token
 				else if (interactive?.button_reply?.payload) {
 					try {
-						const payload = typeof interactive.button_reply.payload === 'string'
-							? JSON.parse(interactive.button_reply.payload)
-							: interactive.button_reply.payload;
-						
-						if (payload?.flow_token || payload?.screen === 'COMPLETE' || payload?.data) {
+						const payload =
+							typeof interactive.button_reply.payload === 'string'
+								? JSON.parse(interactive.button_reply.payload)
+								: interactive.button_reply.payload;
+
+						if (
+							payload?.flow_token ||
+							payload?.screen === 'COMPLETE' ||
+							payload?.data
+						) {
 							isFlowMessage = true;
 						}
 					} catch (e) {
 						// If payload is not JSON, check if it's a flow-related string
-						if (typeof interactive.button_reply.payload === 'string' && 
-							interactive.button_reply.payload.includes('flow')) {
+						logger.info(
+							"Button reply payload is not JSON, checking if it's a flow-related string",
+							{
+								payload: interactive.button_reply.payload,
+								error: e,
+							},
+						);
+						if (
+							typeof interactive.button_reply.payload ===
+								'string' &&
+							interactive.button_reply.payload.includes('flow')
+						) {
 							isFlowMessage = true;
 						}
 					}
@@ -159,7 +205,11 @@ export class WebhookWebService {
 					phoneNumber,
 					interactiveType: message?.interactive?.type,
 				});
-				await this.handleFlowResponse(message, phoneNumber, customerWaId);
+				await this.handleFlowResponse(
+					message,
+					phoneNumber,
+					customerWaId,
+				);
 			}
 
 			// Handle MENU or BACK commands
@@ -167,16 +217,27 @@ export class WebhookWebService {
 				const textContent = message?.text?.body?.toUpperCase()?.trim();
 				if (textContent === 'MENU' || textContent === 'BACK') {
 					await this.handleMenuRequest(phoneNumber);
-				} else if (textContent === 'ADD_POINTS' || textContent === 'ADD POINTS') {
+				} else if (
+					textContent === 'ADD_POINTS' ||
+					textContent === 'ADD POINTS'
+				) {
 					await this.handleAddPointsRequest(phoneNumber);
-				} else if (textContent === 'VIEW_CATALOG' || textContent === 'CATALOG' || textContent === 'VIEW CATALOG') {
+				} else if (
+					textContent === 'VIEW_CATALOG' ||
+					textContent === 'CATALOG' ||
+					textContent === 'VIEW CATALOG'
+				) {
 					await this.handleCatalogRequest(phoneNumber, customerWaId);
 				}
 			}
 
 			// Handle button replies
-			if (messageType === 'interactive' && message?.interactive?.type === 'button_reply') {
-				const buttonId = message?.interactive?.button_reply?.id?.toUpperCase();
+			if (
+				messageType === 'interactive' &&
+				message?.interactive?.type === 'button_reply'
+			) {
+				const buttonId =
+					message?.interactive?.button_reply?.id?.toUpperCase();
 				if (buttonId === 'MENU' || buttonId === 'BACK') {
 					await this.handleMenuRequest(phoneNumber);
 				} else if (buttonId === 'ADD_POINTS') {
@@ -229,7 +290,11 @@ export class WebhookWebService {
 			case 'audio':
 				return '[Audio]';
 			case 'document':
-				return message?.document?.caption || message?.document?.filename || '[Document]';
+				return (
+					message?.document?.caption ||
+					message?.document?.filename ||
+					'[Document]'
+				);
 			case 'location':
 				return `[Location: ${message?.location?.latitude}, ${message?.location?.longitude}]`;
 			default:
@@ -237,42 +302,50 @@ export class WebhookWebService {
 		}
 	}
 
-		/**
-		 * Handle WhatsApp Flow response
-		 */
-		private async handleFlowResponse(message: any, phoneNumber: string, waId: string): Promise<void> {
-			try {
-				const interactive = message?.interactive;
-				
-				// Log the full interactive structure for debugging
-				logger.info('Flow interactive message received', {
-					phoneNumber,
-					interactiveType: interactive?.type,
-					interactive: JSON.stringify(interactive).substring(0, 1000),
-				});
+	/**
+	 * Handle WhatsApp Flow response
+	 */
+	private async handleFlowResponse(
+		message: any,
+		phoneNumber: string,
+		waId: string,
+	): Promise<void> {
+		try {
+			const interactive = message?.interactive;
+
+			// Log the full interactive structure for debugging
+			logger.info('Flow interactive message received', {
+				phoneNumber,
+				interactiveType: interactive?.type,
+				interactive: JSON.stringify(interactive).substring(0, 1000),
+			});
 
 			// Extract flow data from various possible locations
 			let flowData: any;
-			
+
 			// Try nfm_reply first (Native Flow Message - new WhatsApp format)
 			if (interactive?.nfm_reply?.response_json) {
 				try {
-					const responseJson = typeof interactive.nfm_reply.response_json === 'string'
-						? JSON.parse(interactive.nfm_reply.response_json)
-						: interactive.nfm_reply.response_json;
-					
+					const responseJson =
+						typeof interactive.nfm_reply.response_json === 'string'
+							? JSON.parse(interactive.nfm_reply.response_json)
+							: interactive.nfm_reply.response_json;
+
 					// nfm_reply format has the data directly in response_json
 					// Extract the actual flow data from the response
 					flowData = {
 						data: responseJson,
 						screen: 'COMPLETE', // nfm_reply is sent when flow is completed
 					};
-					
-					logger.info('Flow data extracted from nfm_reply.response_json', {
-						phoneNumber,
-						hasData: !!flowData?.data,
-						responseKeys: Object.keys(responseJson || {}),
-					});
+
+					logger.info(
+						'Flow data extracted from nfm_reply.response_json',
+						{
+							phoneNumber,
+							hasData: !!flowData?.data,
+							responseKeys: Object.keys(responseJson || {}),
+						},
+					);
 				} catch (parseError) {
 					logger.error('Failed to parse nfm_reply.response_json', {
 						error: parseError,
@@ -284,9 +357,10 @@ export class WebhookWebService {
 			// Try flow_response_json (legacy/common location)
 			else if (interactive?.flow_response_json) {
 				try {
-					flowData = typeof interactive.flow_response_json === 'string'
-						? JSON.parse(interactive.flow_response_json)
-						: interactive.flow_response_json;
+					flowData =
+						typeof interactive.flow_response_json === 'string'
+							? JSON.parse(interactive.flow_response_json)
+							: interactive.flow_response_json;
 					logger.info('Flow data extracted from flow_response_json', {
 						phoneNumber,
 						screen: flowData?.screen,
@@ -302,9 +376,10 @@ export class WebhookWebService {
 			// Try flow_response_data (alternative location)
 			else if (interactive?.flow_response_data) {
 				try {
-					flowData = typeof interactive.flow_response_data === 'string'
-						? JSON.parse(interactive.flow_response_data)
-						: interactive.flow_response_data;
+					flowData =
+						typeof interactive.flow_response_data === 'string'
+							? JSON.parse(interactive.flow_response_data)
+							: interactive.flow_response_data;
 					logger.info('Flow data extracted from flow_response_data', {
 						phoneNumber,
 						screen: flowData?.screen,
@@ -320,25 +395,36 @@ export class WebhookWebService {
 			// Try button_reply payload (sometimes used)
 			else if (interactive?.button_reply?.payload) {
 				try {
-					const payload = typeof interactive.button_reply.payload === 'string'
-						? JSON.parse(interactive.button_reply.payload)
-						: interactive.button_reply.payload;
-					
+					const payload =
+						typeof interactive.button_reply.payload === 'string'
+							? JSON.parse(interactive.button_reply.payload)
+							: interactive.button_reply.payload;
+
 					// If it's just a flow_token, wait for completion
-					if (payload?.flow_token && !payload?.data && !payload?.screen) {
-						logger.info('Flow token received, waiting for flow completion', {
-							phoneNumber,
-							flowToken: payload.flow_token,
-						});
+					if (
+						payload?.flow_token &&
+						!payload?.data &&
+						!payload?.screen
+					) {
+						logger.info(
+							'Flow token received, waiting for flow completion',
+							{
+								phoneNumber,
+								flowToken: payload.flow_token,
+							},
+						);
 						return;
 					}
 					// Otherwise treat as flow data
 					flowData = payload;
-					logger.info('Flow data extracted from button_reply payload', {
-						phoneNumber,
-						screen: flowData?.screen,
-						hasData: !!flowData?.data,
-					});
+					logger.info(
+						'Flow data extracted from button_reply payload',
+						{
+							phoneNumber,
+							screen: flowData?.screen,
+							hasData: !!flowData?.data,
+						},
+					);
 				} catch (parseError) {
 					logger.error('Failed to parse button_reply payload', {
 						error: parseError,
@@ -349,11 +435,17 @@ export class WebhookWebService {
 			}
 			// Log full structure if no flow data found
 			else {
-				logger.warn('Flow response received but no flow data found in expected locations', {
-					phoneNumber,
-					interactiveKeys: Object.keys(interactive || {}),
-					fullInteractive: JSON.stringify(interactive).substring(0, 500),
-				});
+				logger.warn(
+					'Flow response received but no flow data found in expected locations',
+					{
+						phoneNumber,
+						interactiveKeys: Object.keys(interactive || {}),
+						fullInteractive: JSON.stringify(interactive).substring(
+							0,
+							500,
+						),
+					},
+				);
 				return;
 			}
 
@@ -362,12 +454,16 @@ export class WebhookWebService {
 			// 1. screen === 'COMPLETE'
 			// 2. OR if there's data but no version (completed flow without version)
 			// 3. OR if there's data and screen is not present (some flows don't have screen field)
-			const isCompleted = 
+			const isCompleted =
 				flowData?.screen === 'COMPLETE' ||
 				(flowData?.data && !flowData?.version) ||
 				(flowData?.data && flowData?.screen === undefined);
 
-			if (!isCompleted && flowData?.version && flowData?.screen !== 'COMPLETE') {
+			if (
+				!isCompleted &&
+				flowData?.version &&
+				flowData?.screen !== 'COMPLETE'
+			) {
 				logger.info('Flow response received but not completed', {
 					phoneNumber,
 					screen: flowData?.screen,
@@ -384,11 +480,12 @@ export class WebhookWebService {
 			});
 
 			// Parse wa_id to customer ID
-			const customerID = this.parseWaIdToCustomerID(waId);
+			const customerID = parseWaIdToCustomerID(waId);
 
 			// Check if customer already exists by customer ID (wa_id)
-			const existingCustomer = await this.customerService.findCustomerByCustomerID(customerID);
-			
+			const existingCustomer =
+				await this.customerService.findCustomerByCustomerID(customerID);
+
 			if (existingCustomer) {
 				logger.info('Customer already exists, skipping creation', {
 					phoneNumber,
@@ -399,7 +496,11 @@ export class WebhookWebService {
 			}
 
 			// Create customer from flow data using wa_id as customer ID
-			const customer = await this.customerService.createCustomerFromFlow(flowData, phoneNumber, waId);
+			const customer = await this.customerService.createCustomerFromFlow(
+				flowData,
+				phoneNumber,
+				waId,
+			);
 
 			logger.info('Customer created successfully from WhatsApp Flow', {
 				phoneNumber,
@@ -414,26 +515,6 @@ export class WebhookWebService {
 				waId,
 				messageId: message?.id,
 			});
-		}
-	}
-
-	/**
-	 * Parse WhatsApp ID (wa_id) to integer customer ID
-	 */
-	private parseWaIdToCustomerID(waId: string): number {
-		try {
-			// Remove any non-numeric characters and parse to integer
-			const numericId = waId.replace(/\D/g, '');
-			const customerID = parseInt(numericId, 10);
-			
-			if (isNaN(customerID) || customerID <= 0) {
-				throw new Error(`Invalid wa_id format: ${waId}`);
-			}
-			
-			return customerID;
-		} catch (error) {
-			logger.error('Failed to parse wa_id to customerID', { error, waId });
-			throw error;
 		}
 	}
 
@@ -470,11 +551,17 @@ export class WebhookWebService {
 	/**
 	 * Handle VIEW_CATALOG or CATALOG request - send catalog message
 	 */
-	private async handleCatalogRequest(phoneNumber: string, waId?: string): Promise<void> {
+	private async handleCatalogRequest(
+		phoneNumber: string,
+		waId?: string,
+	): Promise<void> {
 		try {
 			logger.info('Catalog request received', { phoneNumber, waId });
 			// const customerName = await this.customerService.getCustomerName(phoneNumber, waId);
-			await this.customerService.sendCatalogMessage(phoneNumber, "customerName");
+			await this.customerService.sendCatalogMessage(
+				phoneNumber,
+				'customerName',
+			);
 		} catch (error) {
 			logger.error('Error handling catalog request', {
 				error,
@@ -487,7 +574,11 @@ export class WebhookWebService {
 	/**
 	 * Handle order event from catalog - send order confirmation
 	 */
-	private async handleOrderEvent(message: any, phoneNumber: string, waId?: string): Promise<void> {
+	private async handleOrderEvent(
+		message: any,
+		phoneNumber: string,
+		waId?: string,
+	): Promise<void> {
 		try {
 			logger.info('Order event received from catalog', {
 				phoneNumber,
@@ -509,7 +600,7 @@ export class WebhookWebService {
 			// WhatsApp order structure can have either 'products' or 'product_items' array
 			const products = order?.products || order?.product_items || [];
 			const itemsCount = products.length || 0;
-			
+
 			// Calculate total from order items
 			// Order items typically have: product_retailer_id, quantity, item_price, currency
 			let totalAmount = 0;
@@ -529,7 +620,7 @@ export class WebhookWebService {
 			// Send order confirmation message
 			await this.customerService.sendOrderConfirmation(
 				phoneNumber,
-				"customerName",
+				'customerName',
 				itemsCount,
 				formattedTotal,
 			);
@@ -574,4 +665,3 @@ export class WebhookWebService {
 		}
 	}
 }
-

@@ -1,6 +1,6 @@
 // src/db/schema/notificationPreferences.ts
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { pgTable, integer, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, bigint, boolean, timestamp } from 'drizzle-orm/pg-core';
 import { uuid } from 'drizzle-orm/pg-core';
 import { users } from '../../users';
 import { customerMaster } from './customers';
@@ -8,7 +8,7 @@ import { customerMaster } from './customers';
 export const notificationPreferences = pgTable('notification_preferences', {
 	id: uuid().defaultRandom().primaryKey(),
 
-	customerID: integer('customer_id')
+	customerID: bigint('customer_id', { mode: 'number' })
 		.notNull()
 		.unique() // ✅ Added unique constraint for 1-to-1 relationship
 		.references(() => customerMaster.customerID, { onDelete: 'cascade' }),

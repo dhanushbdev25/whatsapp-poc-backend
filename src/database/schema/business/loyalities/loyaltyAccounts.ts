@@ -1,13 +1,13 @@
 // src/db/schema/loyaltyAccounts.ts
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { pgTable, uuid, integer, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, integer, bigint, timestamp } from 'drizzle-orm/pg-core';
 import { users } from '../../users';
 import { customerMaster } from '../customer/customers';
 import { loyaltyTransactions } from './loyaltyTransactions';
 
 export const loyaltyAccounts = pgTable('loyalty_accounts', {
 	id: uuid('id').defaultRandom().primaryKey(),
-	customerID: integer('customer_id')
+	customerID: bigint('customer_id', { mode: 'number' })
 		.notNull()
 		.unique() // ✅ Added unique constraint for 1-to-1 relationship
 		.references(() => customerMaster.customerID, { onDelete: 'cascade' }),

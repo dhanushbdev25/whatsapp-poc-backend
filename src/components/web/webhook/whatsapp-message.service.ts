@@ -1,7 +1,6 @@
 import axios from 'axios';
 import env from '@/env';
 import logger from '@/lib/logger';
-import { handleServiceError } from '@/utils/serviceErrorHandler';
 
 export class WhatsAppMessageService {
 	private readonly apiUrl: string;
@@ -96,8 +95,10 @@ export class WhatsAppMessageService {
 	 */
 	public async sendInteractiveMenu(to: string): Promise<void> {
 		try {
-			const headerImageUrl = 'https://mtbsapoc.blob.core.windows.net/whatsapppoccontainer/lush-products-main.jpg';
-			const bodyText = 'Welcome to *Lush Rewards* 🌿\n— your gateway to conscious indulgence. ✨\n\nEarn, redeem, and explore eco-luxury products — made with love and purpose. 💚\n\n💎 Choose an option below to begin your lush experience! 🌸';
+			const headerImageUrl =
+				'https://mtbsapoc.blob.core.windows.net/whatsapppoccontainer/lush-products-main.jpg';
+			const bodyText =
+				'Welcome to *Lush Rewards* 🌿\n— your gateway to conscious indulgence. ✨\n\nEarn, redeem, and explore eco-luxury products — made with love and purpose. 💚\n\n💎 Choose an option below to begin your lush experience! 🌸';
 			const footerText = '🌼 Powered by Lush Loyalty Program';
 
 			const payload = {
@@ -173,7 +174,8 @@ export class WhatsAppMessageService {
 	public async sendAddPointsCTA(to: string): Promise<void> {
 		try {
 			const headerText = 'Add Your Loyalty Points';
-			const bodyText = 'Hey 🌸, when you click the button below, a secure scanner will open.\n\n📸 Simply scan your product QR code to instantly claim your *Lush Reward Points!* 💎\n\nYour eco-luxury treats are just one scan away. 🌿';
+			const bodyText =
+				'Hey 🌸, when you click the button below, a secure scanner will open.\n\n📸 Simply scan your product QR code to instantly claim your *Lush Reward Points!* 💎\n\nYour eco-luxury treats are just one scan away. 🌿';
 			const footerText = '🌼 Powered by Lush Loyalty Program';
 			const displayText = '➕ Add Points';
 			const ctaUrl = `${env.APP_URI}/add-points`;
@@ -229,7 +231,10 @@ export class WhatsAppMessageService {
 	/**
 	 * Send catalog template message
 	 */
-	public async sendCatalogMessage(to: string, customerName: string): Promise<void> {
+	public async sendCatalogMessage(
+		to: string,
+		customerName: string,
+	): Promise<void> {
 		try {
 			const templateName = 'lush_catalouge';
 

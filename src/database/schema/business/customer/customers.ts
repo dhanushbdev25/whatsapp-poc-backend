@@ -2,7 +2,7 @@
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
 import {
 	pgTable,
-	integer,
+	bigint,
 	varchar,
 	text,
 	boolean,
@@ -23,7 +23,7 @@ export const genderEnum = pgEnum('gender', ['male', 'female', 'other']);
 export const customerMaster = pgTable('customer_master', {
 	id: uuid().defaultRandom().primaryKey(),
 	// ✅ Added unique constraint to ensure referential integrity
-	customerID: integer('customer_id').notNull().unique(),
+	customerID: bigint('customer_id', { mode: 'number' }).notNull().unique(),
 	name: varchar('name', { length: 255 }),
 	email: varchar('email', { length: 255 }),
 	phone: varchar('phone', { length: 20 }),

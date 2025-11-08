@@ -16,7 +16,8 @@ export default function webPreAuthRoutes(): Router {
 	const authWebController: AuthWebController = new AuthWebController();
 	router.use('/auth', authWebController.register());
 
-	const webhookWebController: WebhookWebController = new WebhookWebController();
+	const webhookWebController: WebhookWebController =
+		new WebhookWebController();
 	router.use('/webhook', webhookWebController.register());
 
 	return router;
