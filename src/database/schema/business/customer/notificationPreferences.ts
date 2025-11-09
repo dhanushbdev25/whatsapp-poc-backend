@@ -1,6 +1,5 @@
-// src/db/schema/notificationPreferences.ts
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { pgTable, bigint, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, boolean, timestamp } from 'drizzle-orm/pg-core';
 import { uuid } from 'drizzle-orm/pg-core';
 import { users } from '../../users';
 import { customerMaster } from './customers';
@@ -8,10 +7,10 @@ import { customerMaster } from './customers';
 export const notificationPreferences = pgTable('notification_preferences', {
 	id: uuid().defaultRandom().primaryKey(),
 
-	customerID: bigint('customer_id', { mode: 'number' })
+	customerID: uuid('customer_id')
 		.notNull()
-		.unique() // ✅ Added unique constraint for 1-to-1 relationship
-		.references(() => customerMaster.customerID, { onDelete: 'cascade' }),
+		.unique()
+		.references(() => customerMaster.id, { onDelete: 'cascade' }),
 
 	orderUpdates: boolean('order_updates').default(false).notNull(),
 	loyaltyRewards: boolean('loyalty_rewards').default(false).notNull(),
@@ -19,14 +18,12 @@ export const notificationPreferences = pgTable('notification_preferences', {
 		.default(false)
 		.notNull(),
 
-	// 🔹 Auditing (linked to users) - Fixed naming convention
 	createdBy: uuid('created_by').references(() => users.id, {
 		onDelete: 'set null',
 	}),
 	updatedBy: uuid('updated_by').references(() => users.id, {
 		onDelete: 'set null',
 	}),
-
 	createdAt: timestamp('created_at').defaultNow().notNull(),
 	updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -38,17 +35,13 @@ export type InsertNotificationPreferences = InferInsertModel<
 	typeof notificationPreferences
 >;
 
-// ✅ Relations - Updated field references
 export const notificationPreferencesRelations = relations(
 	notificationPreferences,
 	({ one }) => ({
-		// Each notification preference belongs to one customer
 		customer: one(customerMaster, {
 			fields: [notificationPreferences.customerID],
-			references: [customerMaster.customerID],
+			references: [customerMaster.id],
 		}),
-
-		// Audit relations to users - Updated field names
 		createdByUser: one(users, {
 			fields: [notificationPreferences.createdBy],
 			references: [users.id],

@@ -22,7 +22,7 @@ export const genderEnum = pgEnum('gender', ['male', 'female', 'other']);
 
 export const customerMaster = pgTable('customer_master', {
 	id: uuid().defaultRandom().primaryKey(),
-	// ✅ Added unique constraint to ensure referential integrity
+	//  Added unique constraint to ensure referential integrity
 	customerID: bigint('customer_id', { mode: 'number' }).notNull().unique(),
 	name: varchar('name', { length: 255 }),
 	email: varchar('email', { length: 255 }),
@@ -40,28 +40,28 @@ export const customerMaster = pgTable('customer_master', {
 		onDelete: 'set null',
 	}),
 
-	// ✅ Fixed typo: lastestActive → latestActive
+	//  Fixed typo: lastestActive → latestActive
 	latestActive: timestamp('latest_active'),
 	createdAt: timestamp('created_at').defaultNow().notNull(),
 	updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	isActive: boolean('is_active').default(true).notNull(),
 });
 
-// ✅ Type inference
+//  Type inference
 export type SelectCustomer = InferSelectModel<typeof customerMaster>;
 export type InsertCustomer = InferInsertModel<typeof customerMaster>;
 
-// ✅ Relations - Updated field references
+//  Relations - Updated field references
 export const customerMasterRelations = relations(
 	customerMaster,
 	({ one, many }) => ({
 		// 1️⃣ One-to-One relations
 		notificationPreferences: one(notificationPreferences, {
-			fields: [customerMaster.customerID],
+			fields: [customerMaster.id],
 			references: [notificationPreferences.customerID],
 		}),
 		loyaltyAccounts: one(loyaltyAccounts, {
-			fields: [customerMaster.customerID],
+			fields: [customerMaster.id],
 			references: [loyaltyAccounts.customerID],
 		}),
 

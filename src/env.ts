@@ -56,6 +56,8 @@ const envSchema = z.object({
 
 	COOKIE_DOMAIN: z.string().optional(),
 
+	AUTH_MODE: z.enum(['cookie', 'localStorage']).optional().default('cookie'),
+
 	DB_MIGRATING: stringBoolean,
 	DB_SEEDING: stringBoolean,
 
@@ -63,8 +65,10 @@ const envSchema = z.object({
 	WHATSAPP_ACCESS_TOKEN: z.string(),
 	WHATSAPP_PHONE_NUMBER_ID: z.string(),
 	WHATSAPP_API_VERSION: z.string().optional(),
-
 	TZ: z.string().default('UTC'),
+
+	STRIPE_SECRET_KEY: z.string().optional(),
+	STRIPE_PUBLISHABLE_KEY: z.string().optional(),
 });
 
 export function initEnv() {

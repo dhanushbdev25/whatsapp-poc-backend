@@ -25,7 +25,7 @@ export const customerGroups = pgTable('customer_groups', {
 export type SelectCustomerGroup = InferSelectModel<typeof customerGroups>;
 export type InsertCustomerGroup = InferInsertModel<typeof customerGroups>;
 
-// ✅ Relations - Updated field references
+//  Relations - Updated field references
 export const customerGroupsRelations = relations(
 	customerGroups,
 	({ many, one }) => ({

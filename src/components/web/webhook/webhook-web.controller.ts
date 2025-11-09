@@ -1,8 +1,12 @@
+import { eq } from 'drizzle-orm';
 import { Router, Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { WebhookVerificationQueryParser } from './webhook-web-parser';
 import { WebhookWebService } from './webhook-web.service';
+import AppError from '@/abstractions/AppError';
 import BaseApi from '@/components/BaseApi';
+import { db } from '@/database';
+import { users } from '@/database/schema';
 import logger from '@/lib/logger';
 
 export default class WebhookWebController extends BaseApi {
@@ -16,6 +20,8 @@ export default class WebhookWebController extends BaseApi {
 	public register(): Router {
 		this.router.get('/', this.verifyWebhook.bind(this));
 		this.router.post('/', this.handleWebhookEvents.bind(this));
+		this.router.get('/fetchTemplates', this.fetchAllTemplates.bind(this));
+		this.router.post('/earn-loyalty', this.earnLoyaltyPoints.bind(this));
 		return this.router;
 	}
 
@@ -51,5 +57,71 @@ export default class WebhookWebController extends BaseApi {
 		this.webhookService.processWebhookPayload(req.body).catch((error) => {
 			logger.error('Error processing webhook events', { error });
 		});
+	}
+
+	public async fetchAllTemplates(req: Request, res: Response) {
+		const { data, message } = await this.webhookService.fetchAllTemplates();
+		res.locals = { data, message };
+		super.send(res);
+	}
+
+	public async earnLoyaltyPoints(req: Request, res: Response) {
+		const { productID, customerID } = req.body;
+		const { userId } = req.query;
+
+		// Validate required fields
+		if (!productID || !customerID) {
+			throw new AppError(
+				'Missing required fields: productID or customerID',
+				StatusCodes.BAD_REQUEST,
+			);
+		}
+
+		// Validate UUID format
+		const uuidRegex = /^[0-9a-fA-F-]{36}$/;
+		if (!uuidRegex.test(productID)) {
+			throw new AppError(
+				'Invalid product ID format',
+				StatusCodes.BAD_REQUEST,
+			);
+		}
+		if (!uuidRegex.test(customerID)) {
+			throw new AppError(
+				'Invalid customer ID format',
+				StatusCodes.BAD_REQUEST,
+			);
+		}
+
+		// Fetch default WhatsApp user if userId not provided
+		let resolvedUserId: string;
+		if (userId) {
+			resolvedUserId = String(userId);
+		} else {
+			// Fetch from database where name = 'whatsapp'
+			const whatsappUser = await db
+				.select({ id: users.id })
+				.from(users)
+				.where(eq(users.name, 'whatsapp'))
+				.limit(1);
+
+			if (!whatsappUser.length) {
+				throw new AppError(
+					"Default 'whatsapp' customer not found in database",
+					StatusCodes.INTERNAL_SERVER_ERROR,
+				);
+			}
+
+			resolvedUserId = whatsappUser[0].id;
+		}
+
+		// Proceed with service call
+		const { data, message } = await this.webhookService.earnLoyaltyPoints(
+			String(customerID),
+			String(productID),
+			resolvedUserId,
+		);
+
+		res.locals = { data, message };
+		super.send(res);
 	}
 }

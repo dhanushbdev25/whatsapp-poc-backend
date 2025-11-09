@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import FileWebController from '@/components/web/file/file-web.controller';
+import CustomerController from '@/components/web/customers/customerMaster/customerMaster.controller';
 import SessionController from '@/components/web/session/session.controller';
 import protect from '@/middleware/protect';
 
@@ -11,9 +11,8 @@ export default function webPostAuthRoutes(): Router {
 
 	const sessionController: SessionController = new SessionController();
 	router.use('/session', sessionController.register());
-
-	const fileWebController: FileWebController = new FileWebController();
-	router.use('/files', fileWebController.register());
+	const customerController: CustomerController = new CustomerController();
+	router.use('/customers', customerController.register());
 
 	return router;
 }

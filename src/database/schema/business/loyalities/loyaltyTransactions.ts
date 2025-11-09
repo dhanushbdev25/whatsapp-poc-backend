@@ -1,10 +1,8 @@
-// src/db/schema/loyaltyTransactions.ts
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
 import {
 	pgTable,
 	uuid,
 	integer,
-	bigint,
 	text,
 	timestamp,
 	jsonb,
@@ -16,14 +14,13 @@ import { loyaltyAccounts } from './loyaltyAccounts';
 
 export const loyaltyTransactions = pgTable('loyalty_transactions', {
 	id: uuid('id').defaultRandom().primaryKey(),
-	customerID: bigint('customer_id', { mode: 'number' })
+	customerID: uuid('customer_id')
 		.notNull()
-		.references(() => customerMaster.customerID, { onDelete: 'cascade' }),
+		.references(() => customerMaster.id, { onDelete: 'cascade' }),
 	account_id: uuid('account_id')
 		.notNull()
 		.references(() => loyaltyAccounts.id, { onDelete: 'cascade' }),
 
-	// ✅ Added notNull() for required transaction data
 	initialPoint: integer('initial_point').notNull(),
 	manipulatedPoint: integer('manipulated_point').notNull(),
 	totalPoint: integer('total_point').notNull(),
@@ -32,14 +29,12 @@ export const loyaltyTransactions = pgTable('loyalty_transactions', {
 	type: varchar('type', { length: 50 }),
 	orderNo: varchar('order_no', { length: 100 }),
 
-	// 🔹 Audit fields - Fixed naming convention
 	createdBy: uuid('created_by').references(() => users.id, {
 		onDelete: 'set null',
 	}),
 	updatedBy: uuid('updated_by').references(() => users.id, {
 		onDelete: 'set null',
 	}),
-
 	createdAt: timestamp('created_at').defaultNow().notNull(),
 	updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -51,20 +46,17 @@ export type InsertLoyaltyTransaction = InferInsertModel<
 	typeof loyaltyTransactions
 >;
 
-// ✅ Relations - Updated field references
 export const loyaltyTransactionsRelations = relations(
 	loyaltyTransactions,
 	({ one }) => ({
 		customer: one(customerMaster, {
 			fields: [loyaltyTransactions.customerID],
-			references: [customerMaster.customerID],
+			references: [customerMaster.id],
 		}),
 		account: one(loyaltyAccounts, {
 			fields: [loyaltyTransactions.account_id],
 			references: [loyaltyAccounts.id],
 		}),
-
-		// Audit relations - Updated field names
 		createdByUser: one(users, {
 			fields: [loyaltyTransactions.createdBy],
 			references: [users.id],

@@ -72,9 +72,23 @@ export {
 } from './business/order/orders';
 
 export {
-	orderMapping,
-	orderMappingRelations,
-	orderMappingStatusEnum,
-	type SelectOrderMapping,
-	type InsertOrderMapping,
-} from './business/order/orderMapping';
+	products,
+	productsRelations,
+	productStatusEnum,
+	type SelectProduct,
+	type InsertProduct,
+} from './business/order/products';
+
+export {
+	orderItems,
+	orderItemsRelations,
+	type SelectOrderItem,
+	type InsertOrderItem,
+} from './business/order/orderItems';
+
+export {
+	customerProducts,
+	customerProductsRelations,
+	type SelectCustomerProduct,
+	type InsertCustomerProduct,
+} from './business/customer/customerProducts';

@@ -276,18 +276,18 @@ curl -X POST "http://localhost:8080/web/webhook" \
                   "profile": {
                     "name": "John Doe"
                   },
-                  "wa_id": "918610031033"
+                  "wa_id": "91XXXXXXXXX"
                 }
               ],
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "interactive",
                   "interactive": {
                     "type": "flow",
-                    "flow_response_json": "{\"version\":\"3\",\"screen\":\"COMPLETE\",\"data\":{\"firstname\":\"John\",\"lastname\":\"Doe\",\"email\":\"john.doe@example.com\",\"phone\":\"918610031033\",\"street_address\":\"123 Main Street\",\"city\":\"Mumbai\",\"pincode\":\"400001\"}}"
+                    "flow_response_json": "{\"version\":\"3\",\"screen\":\"COMPLETE\",\"data\":{\"firstname\":\"John\",\"lastname\":\"Doe\",\"email\":\"john.doe@example.com\",\"phone\":\"91XXXXXXXXX\",\"street_address\":\"123 Main Street\",\"city\":\"Mumbai\",\"pincode\":\"400001\"}}"
                   }
                 }
               ]
@@ -443,12 +443,12 @@ curl -X POST "http://localhost:8080/web/webhook" \
                   "profile": {
                     "name": "Test User"
                   },
-                  "wa_id": "918610031033"
+                  "wa_id": "91XXXXXXXXX"
                 }
               ],
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "interactive",
@@ -490,13 +490,13 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "interactive",
                   "interactive": {
                     "type": "flow",
-                    "flow_response_json": "{\"version\":\"3\",\"screen\":\"COMPLETE\",\"data\":{\"firstname\":\"Test\",\"lastname\":\"User\",\"email\":\"test@example.com\",\"phone\":\"918610031033\",\"street_address\":\"789 Test Street\",\"city\":\"Bangalore\",\"pincode\":\"560001\"}}"
+                    "flow_response_json": "{\"version\":\"3\",\"screen\":\"COMPLETE\",\"data\":{\"firstname\":\"Test\",\"lastname\":\"User\",\"email\":\"test@example.com\",\"phone\":\"91XXXXXXXXX\",\"street_address\":\"789 Test Street\",\"city\":\"Bangalore\",\"pincode\":\"560001\"}}"
                   }
                 }
               ]
@@ -511,7 +511,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
 
 **Expected Behavior:**
 - Uses `message.from` as wa_id when contacts array is not available
-- Customer created with customerID = 918610031033
+- Customer created with customerID = 91XXXXXXXXX
 
 ### Testing Duplicate Customer Prevention
 Run the same Flow completion curl twice:
@@ -538,18 +538,18 @@ curl -X POST "http://localhost:8080/web/webhook" \
                   "profile": {
                     "name": "John Doe"
                   },
-                  "wa_id": "918610031033"
+                  "wa_id": "91XXXXXXXXX"
                 }
               ],
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "interactive",
                   "interactive": {
                     "type": "flow",
-                    "flow_response_json": "{\"version\":\"3\",\"screen\":\"COMPLETE\",\"data\":{\"firstname\":\"John\",\"lastname\":\"Doe\",\"email\":\"john.doe@example.com\",\"phone\":\"918610031033\",\"street_address\":\"123 Main Street\",\"city\":\"Mumbai\",\"pincode\":\"400001\"}}"
+                    "flow_response_json": "{\"version\":\"3\",\"screen\":\"COMPLETE\",\"data\":{\"firstname\":\"John\",\"lastname\":\"Doe\",\"email\":\"john.doe@example.com\",\"phone\":\"91XXXXXXXXX\",\"street_address\":\"123 Main Street\",\"city\":\"Mumbai\",\"pincode\":\"400001\"}}"
                   }
                 }
               ]
@@ -594,7 +594,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "text",
@@ -635,7 +635,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "text",
@@ -672,7 +672,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "interactive",
@@ -731,7 +731,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "text",
@@ -772,7 +772,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "text",
@@ -809,7 +809,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "interactive",
@@ -870,7 +870,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "text",
@@ -907,7 +907,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "text",
@@ -944,7 +944,7 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "interactive",
@@ -1003,12 +1003,12 @@ curl -X POST "http://localhost:8080/web/webhook" \
               },
               "contacts": [
                 {
-                  "wa_id": "918610031033"
+                  "wa_id": "91XXXXXXXXX"
                 }
               ],
               "messages": [
                 {
-                  "from": "918610031033",
+                  "from": "91XXXXXXXXX",
                   "id": "wamid.XXX",
                   "timestamp": "1234567890",
                   "type": "order",
@@ -1121,7 +1121,7 @@ Save this as `test-flow-registration.sh`:
 #!/bin/bash
 
 BASE_URL="http://localhost:8080/web/webhook"
-WA_ID="918610031033"
+WA_ID="91XXXXXXXXX"
 
 echo "Testing WhatsApp Flow Customer Registration..."
 echo ""

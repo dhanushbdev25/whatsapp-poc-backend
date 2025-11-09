@@ -1,4 +1,3 @@
-// src/db/schema/orders.ts
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
 import {
 	pgTable,
@@ -7,14 +6,12 @@ import {
 	text,
 	timestamp,
 	jsonb,
-	bigint,
 	pgEnum,
 } from 'drizzle-orm/pg-core';
 import { users } from '../../users';
 import { customerMaster } from '../customer/customers';
-import { orderMapping } from './orderMapping';
+import { orderItems } from './orderItems';
 
-// optional enum for status
 export const orderStatusEnum = pgEnum('order_status', [
 	'new',
 	'inprogress',
@@ -24,14 +21,13 @@ export const orderStatusEnum = pgEnum('order_status', [
 export const orders = pgTable('orders', {
 	id: uuid('id').defaultRandom().primaryKey(),
 
-	customerID: bigint('customer_id', { mode: 'number' })
+	customerID: uuid('customer_id')
 		.notNull()
-		.references(() => customerMaster.customerID, { onDelete: 'cascade' }),
+		.references(() => customerMaster.id, { onDelete: 'cascade' }),
 
-	// ✅ Added unique constraint since orderMapping references this field
 	orderNo: varchar('order_no', { length: 100 }).notNull().unique(),
 	orderName: varchar('order_name', { length: 255 }),
-	orderCreatedAt: timestamp('order_created_at'),
+	orderCreatedAt: timestamp('order_created_at').defaultNow(),
 	status: orderStatusEnum('status').default('new').notNull(),
 	trackingNo: varchar('tracking_no', { length: 255 }),
 	paymentType: varchar('payment_type', { length: 50 }),
@@ -40,7 +36,6 @@ export const orders = pgTable('orders', {
 	carrier: varchar('carrier', { length: 100 }),
 	metadata: jsonb('metadata'),
 
-	// 🔹 Audit fields - Fixed naming convention
 	createdBy: uuid('created_by').references(() => users.id, {
 		onDelete: 'set null',
 	}),
@@ -55,15 +50,12 @@ export const orders = pgTable('orders', {
 export type SelectOrder = InferSelectModel<typeof orders>;
 export type InsertOrder = InferInsertModel<typeof orders>;
 
-// ✅ Relations - Updated field references
 export const ordersRelations = relations(orders, ({ one, many }) => ({
 	customer: one(customerMaster, {
 		fields: [orders.customerID],
-		references: [customerMaster.customerID],
+		references: [customerMaster.id],
 	}),
-	mappings: many(orderMapping),
-
-	// Audit relations - Updated field names
+	orderItems: many(orderItems),
 	createdByUser: one(users, {
 		fields: [orders.createdBy],
 		references: [users.id],

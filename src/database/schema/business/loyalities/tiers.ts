@@ -7,7 +7,7 @@ export const tiers = pgTable('tiers', {
 	id: uuid('id').defaultRandom().primaryKey(),
 	tier_name: text('tier_name').notNull(),
 	tier_description: text('tier_description'),
-	// ✅ Added notNull() for required field
+	//  Added notNull() for required field
 	points_required: integer('points_required').notNull(),
 
 	// 🔹 Audit fields - Fixed naming convention
@@ -25,7 +25,7 @@ export const tiers = pgTable('tiers', {
 export type SelectTier = InferSelectModel<typeof tiers>;
 export type InsertTier = InferInsertModel<typeof tiers>;
 
-// ✅ Relations - Updated field references
+//  Relations - Updated field references
 export const tiersRelations = relations(tiers, ({ one }) => ({
 	// Audit relations - Updated field names
 	createdByUser: one(users, {

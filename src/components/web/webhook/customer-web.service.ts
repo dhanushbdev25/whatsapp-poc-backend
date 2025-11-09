@@ -2,7 +2,11 @@ import { sql } from 'drizzle-orm';
 import { parseWaIdToCustomerID, getFlowField } from './webhook-utils';
 import { WhatsAppMessageService } from './whatsapp-message.service';
 import { db } from '@/database';
-import { customerMaster, type InsertCustomer } from '@/database/schema';
+import {
+	customerMaster,
+	loyaltyAccounts,
+	type InsertCustomer,
+} from '@/database/schema';
 import logger from '@/lib/logger';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
 
@@ -258,8 +262,21 @@ export class CustomerWebService {
 	/**
 	 * Send Add Points CTA message
 	 */
-	public async sendAddPointsCTA(phoneNumber: string): Promise<void> {
-		await this.whatsappMessageService.sendAddPointsCTA(phoneNumber);
+	public async sendAddPointsCTA(
+		phoneNumber: string,
+		userId: number,
+	): Promise<void> {
+		await this.whatsappMessageService.sendAddPointsCTA(phoneNumber, userId);
+	}
+
+	/**
+	 * Send Try Wigs CTA message
+	 */
+	public async sendTryWigsCTA(
+		phoneNumber: string,
+		userId: number,
+	): Promise<void> {
+		await this.whatsappMessageService.sendTryWigsCTA(phoneNumber, userId);
 	}
 
 	/**
@@ -290,5 +307,120 @@ export class CustomerWebService {
 			totalAmount,
 			orderId,
 		);
+	}
+
+	/**
+	 * Send points earned notification message
+	 */
+	public async sendPointsEarnedMessage(
+		phoneNumber: string,
+		pointsAdded: number,
+		newBalance: number,
+		customerName: string,
+	): Promise<void> {
+		await this.whatsappMessageService.sendPointsEarnedMessage(
+			phoneNumber,
+			pointsAdded,
+			newBalance,
+			customerName,
+		);
+	}
+
+	/**
+	 * Get customer loyalty balance and send balance message
+	 */
+	public async sendBalanceMessage(
+		phoneNumber: string,
+		waId?: string,
+	): Promise<void> {
+		try {
+			// Find customer by phone or waId
+			let customer = await this.findCustomerByPhone(phoneNumber);
+			const customerName = await this.getCustomerName(phoneNumber, waId);
+
+			if (!customer && waId) {
+				const customerID = parseWaIdToCustomerID(waId);
+				customer = await this.findCustomerByCustomerID(customerID);
+			}
+
+			if (!customer) {
+				logger.warn('Customer not found for balance request', {
+					phoneNumber,
+					waId,
+				});
+
+				// Send a default message or error message
+				await this.whatsappMessageService.sendBalanceMessage(
+					phoneNumber,
+					0,
+					customerName,
+				);
+				return;
+			}
+
+			//  Fetch loyalty account balance safely
+			let pointsBalance = 0;
+
+			try {
+				const [loyaltyAccount] = await db
+					.select({
+						pointsBalance: loyaltyAccounts.points_balance,
+					})
+					.from(loyaltyAccounts)
+					.where(
+						sql`${loyaltyAccounts.customerID} = ${customer.customerID}`,
+					)
+					.limit(1);
+
+				if (loyaltyAccount) {
+					pointsBalance = loyaltyAccount.pointsBalance ?? 0;
+					logger.info('Loyalty account found', {
+						customerID: customer.customerID,
+						pointsBalance,
+					});
+				} else {
+					logger.warn('No loyalty account found for customer', {
+						customerID: customer.customerID,
+					});
+				}
+			} catch (loyaltyError) {
+				logger.error('Error fetching loyalty account balance', {
+					error: loyaltyError,
+					customerID: customer.customerID,
+				});
+				pointsBalance = 0;
+			}
+
+			//  Send balance message
+			await this.whatsappMessageService.sendBalanceMessage(
+				phoneNumber,
+				pointsBalance,
+				customerName,
+			);
+
+			logger.info('Balance message sent', {
+				phoneNumber,
+				customerID: customer.customerID,
+				pointsBalance,
+				customerName,
+			});
+		} catch (error) {
+			logger.error('Error sending balance message', {
+				error,
+				phoneNumber,
+				waId,
+			});
+
+			// Send default balance message even on error
+			await this.whatsappMessageService
+				.sendBalanceMessage(phoneNumber, 0, 'Customer')
+				.catch((err) => {
+					logger.error('Failed to send default balance message', {
+						error: err,
+						phoneNumber,
+						customer: 'Customer',
+					});
+				});
+		}
 	}
 }

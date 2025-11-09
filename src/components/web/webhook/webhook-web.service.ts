@@ -1,9 +1,22 @@
+import axios from 'axios';
+import { eq, inArray } from 'drizzle-orm';
 import { StatusCodes } from 'http-status-codes';
 import { CustomerWebService } from './customer-web.service';
 import { parseWaIdToCustomerID } from './webhook-utils';
 import AppError from '@/abstractions/AppError';
+import { db } from '@/database';
+import {
+	customerMaster,
+	loyaltyAccounts,
+	loyaltyTransactions,
+	orderItems,
+	orders,
+	products,
+} from '@/database/schema';
 import env from '@/env';
 import logger from '@/lib/logger';
+import { handleServiceError } from '@/utils/serviceErrorHandler';
+import { formatTemplateResponse } from '@/utils/templateFormatter';
 
 export class WebhookWebService {
 	private customerService: CustomerWebService;
@@ -221,13 +234,28 @@ export class WebhookWebService {
 					textContent === 'ADD_POINTS' ||
 					textContent === 'ADD POINTS'
 				) {
-					await this.handleAddPointsRequest(phoneNumber);
+					await this.handleAddPointsRequest(
+						phoneNumber,
+						customerWaId,
+					);
 				} else if (
 					textContent === 'VIEW_CATALOG' ||
 					textContent === 'CATALOG' ||
 					textContent === 'VIEW CATALOG'
 				) {
 					await this.handleCatalogRequest(phoneNumber, customerWaId);
+				} else if (
+					textContent === 'VIEW_BALANCE' ||
+					textContent === 'BALANCE' ||
+					textContent === 'VIEW BALANCE'
+				) {
+					await this.handleBalanceRequest(phoneNumber, customerWaId);
+				} else if (
+					textContent === 'TRY' ||
+					textContent === 'TRY WIG' ||
+					textContent === 'WIG'
+				) {
+					await this.handleTryWigsRequest(phoneNumber, customerWaId);
 				}
 			}
 
@@ -241,9 +269,16 @@ export class WebhookWebService {
 				if (buttonId === 'MENU' || buttonId === 'BACK') {
 					await this.handleMenuRequest(phoneNumber);
 				} else if (buttonId === 'ADD_POINTS') {
-					await this.handleAddPointsRequest(phoneNumber);
+					await this.handleAddPointsRequest(
+						phoneNumber,
+						customerWaId,
+					);
 				} else if (buttonId === 'VIEW_CATALOG') {
 					await this.handleCatalogRequest(phoneNumber, customerWaId);
+				} else if (buttonId === 'VIEW_BALANCE') {
+					await this.handleBalanceRequest(phoneNumber, customerWaId);
+				} else if (buttonId === 'TRY_WIG') {
+					await this.handleTryWigsRequest(phoneNumber, customerWaId);
 				}
 			}
 
@@ -536,14 +571,85 @@ export class WebhookWebService {
 	/**
 	 * Handle ADD_POINTS request - send CTA URL message
 	 */
-	private async handleAddPointsRequest(phoneNumber: string): Promise<void> {
+	private async handleAddPointsRequest(
+		phoneNumber: string,
+		waId?: string,
+	): Promise<void> {
 		try {
-			logger.info('Add Points request received', { phoneNumber });
-			await this.customerService.sendAddPointsCTA(phoneNumber);
+			logger.info('Add Points request received', { phoneNumber, waId });
+
+			// Find customer to get their customerID (userId)
+			let customer =
+				await this.customerService.findCustomerByPhone(phoneNumber);
+
+			if (!customer && waId) {
+				const customerID = parseWaIdToCustomerID(waId);
+				customer =
+					await this.customerService.findCustomerByCustomerID(
+						customerID,
+					);
+			}
+
+			if (!customer) {
+				logger.warn('Customer not found for add points request', {
+					phoneNumber,
+					waId,
+				});
+				return;
+			}
+
+			await this.customerService.sendAddPointsCTA(
+				phoneNumber,
+				customer.customerID,
+			);
 		} catch (error) {
 			logger.error('Error handling add points request', {
 				error,
 				phoneNumber,
+				waId,
+			});
+		}
+	}
+
+	/**
+	 * Handle TRY_WIG request - send Try Wigs CTA URL message
+	 */
+	private async handleTryWigsRequest(
+		phoneNumber: string,
+		waId?: string,
+	): Promise<void> {
+		try {
+			logger.info('Try Wigs request received', { phoneNumber, waId });
+
+			// Find customer to get their customerID (userId)
+			let customer =
+				await this.customerService.findCustomerByPhone(phoneNumber);
+
+			if (!customer && waId) {
+				const customerID = parseWaIdToCustomerID(waId);
+				customer =
+					await this.customerService.findCustomerByCustomerID(
+						customerID,
+					);
+			}
+
+			if (!customer) {
+				logger.warn('Customer not found for try wigs request', {
+					phoneNumber,
+					waId,
+				});
+				return;
+			}
+
+			await this.customerService.sendTryWigsCTA(
+				phoneNumber,
+				customer.customerID,
+			);
+		} catch (error) {
+			logger.error('Error handling try wigs request', {
+				error,
+				phoneNumber,
+				waId,
 			});
 		}
 	}
@@ -567,6 +673,25 @@ export class WebhookWebService {
 			);
 		} catch (error) {
 			logger.error('Error handling catalog request', {
+				error,
+				phoneNumber,
+				waId,
+			});
+		}
+	}
+
+	/**
+	 * Handle VIEW_BALANCE or BALANCE request - send balance message
+	 */
+	private async handleBalanceRequest(
+		phoneNumber: string,
+		waId?: string,
+	): Promise<void> {
+		try {
+			logger.info('Balance request received', { phoneNumber, waId });
+			await this.customerService.sendBalanceMessage(phoneNumber, waId);
+		} catch (error) {
+			logger.error('Error handling balance request', {
 				error,
 				phoneNumber,
 				waId,
@@ -600,24 +725,20 @@ export class WebhookWebService {
 			}
 
 			// Extract order details
-			// WhatsApp order structure can have either 'products' or 'product_items' array
-			const products = order?.products || order?.product_items || [];
-			const itemsCount = products.length || 0;
+			const productsList = order?.products || order?.product_items || [];
+			const itemsCount = productsList.length || 0;
 
-			// Calculate total from order items
-			// Order items typically have: product_retailer_id, quantity, item_price, currency
+			// Calculate total amount
 			let totalAmount = 0;
-			for (const product of products) {
+			for (const product of productsList) {
 				const itemPrice = parseFloat(product?.item_price || 0);
 				const quantity = parseInt(product?.quantity || 1, 10);
 				totalAmount += itemPrice * quantity;
 			}
 
-			// Format total amount (assuming NGN currency, adjust as needed)
-			const currency = products[0]?.currency || 'NGN';
+			const currency = productsList[0]?.currency || 'NGN';
 			const formattedTotal = `${totalAmount} ${currency}`;
 
-			// Get customer name
 			const customerName =
 				(await this.customerService.getCustomerName(
 					phoneNumber,
@@ -635,6 +756,113 @@ export class WebhookWebService {
 				messageId: message?.id,
 				orderId: message?.order?.id,
 			});
+
+			try {
+				await db.transaction(async (tx) => {
+					const customer =
+						await this.customerService.findCustomerByPhone(
+							phoneNumber,
+						);
+					if (!customer) {
+						throw new AppError(
+							`Customer not found for phone number: ${phoneNumber}`,
+							StatusCodes.NOT_FOUND,
+						);
+					}
+
+					const [newOrder] = await tx
+						.insert(orders)
+						.values({
+							customerID: customer.id,
+							orderNo: message?.order?.id || `ORD-${Date.now()}`,
+							orderName: message?.order?.id,
+							status: 'new',
+							paymentType: 'WhatsApp',
+							metadata: {
+								itemsCount,
+								totalAmount,
+								currency,
+								formattedTotal,
+								productItems: productsList,
+								messageId: message?.id,
+								customerName,
+								phoneNumber,
+								waId,
+							},
+						})
+						.returning();
+
+					logger.info('Order inserted successfully', {
+						orderId: newOrder.id,
+						orderNo: newOrder.orderNo,
+						customerID: newOrder.customerID,
+					});
+
+					const skus = productsList
+						.map((p) => p?.product_retailer_id)
+						.filter(Boolean);
+					if (skus.length === 0) {
+						logger.warn(
+							'No valid product SKUs found, skipping product insertions',
+						);
+						return;
+					}
+
+					const productsToBeMapped = await tx
+						.select({
+							id: products.id,
+							contentId: products.contentId,
+						})
+						.from(products)
+						.where(inArray(products.contentId, skus));
+
+					// Create SKU → Product ID map
+					const contentIdToIdMap = new Map(
+						productsToBeMapped.map((p) => [p.contentId, p.id]),
+					);
+
+					const orderItemsData = productsList
+						.filter(
+							(p) =>
+								p?.product_retailer_id &&
+								contentIdToIdMap.has(p.product_retailer_id),
+						)
+						.map((p) => ({
+							orderID: newOrder.id,
+							productID: contentIdToIdMap.get(
+								p.product_retailer_id,
+							)!,
+							qty: parseInt(p?.quantity || 1, 10),
+							status: 'new' as const,
+						}));
+
+					if (orderItemsData.length > 0) {
+						await tx.insert(orderItems).values(orderItemsData);
+						logger.info('Bulk order-product mapping inserted', {
+							orderId: newOrder.id,
+							itemCount: orderItemsData.length,
+						});
+					} else {
+						logger.warn(
+							'No order-product mappings created (no valid SKUs found)',
+						);
+					}
+				});
+
+				logger.info(
+					'Order and related products processed successfully',
+					{
+						messageId: message?.id,
+						orderId: message?.order?.id,
+					},
+				);
+			} catch (dbError) {
+				logger.error('Error inserting order and related products', {
+					error: dbError,
+					messageId: message?.id,
+					orderId: message?.order?.id,
+				});
+			}
 
 			// Send order confirmation message
 			await this.customerService.sendOrderConfirmation(
@@ -683,6 +911,179 @@ export class WebhookWebService {
 					errors: status?.errors,
 				});
 			}
+		}
+	}
+
+	async fetchAllTemplates() {
+		const GRAPH_API_URL =
+			'https://graph.facebook.com/v22.0/791929203748580/message_templates';
+		const ACCESS_TOKEN = env.WHATSAPP_ACCESS_TOKEN;
+		try {
+			// Fetch all templates
+			const response = await axios.get(GRAPH_API_URL, {
+				headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
+			});
+
+			if (!response) {
+				throw new AppError(
+					'Fetch Templates failed - fetching from WP',
+					StatusCodes.INTERNAL_SERVER_ERROR,
+				);
+			}
+			const templates = response.data?.data || [];
+
+			const formattedTemplates = templates.map((template: any) => {
+				template.components = template.components?.filter(
+					(c: any) =>
+						!['BUTTONS', 'BUTTON', 'FOOTER'].includes(
+							c.type?.toUpperCase(),
+						),
+				);
+				return formatTemplateResponse(template);
+			});
+
+			return {
+				data: formattedTemplates,
+				message: 'All templates fetched and formatted successfully',
+			};
+		} catch (error) {
+			handleServiceError(
+				error,
+				'Failed to fetch templates',
+				StatusCodes.BAD_GATEWAY,
+				'Error in fetchAllTemplates service',
+			);
+		}
+	}
+
+	async earnLoyaltyPoints(userIdentifier: string, productID: string, resolvedUserId: string) {
+		try {
+			const isUUID = /^[0-9a-fA-F-]{36}$/.test(userIdentifier);
+
+			return await db.transaction(async (tx) => {
+				const product = await tx.query.products.findFirst({
+					where: isUUID
+						? eq(products.id, productID)
+						: eq(products.contentId, productID),
+				});
+				if (!product)
+					throw new AppError(
+						'Product not found',
+						StatusCodes.NOT_FOUND,
+					);
+
+				const productPoints = product?.points ?? 0;
+				if (!productPoints || productPoints <= 0)
+					throw new AppError(
+						'Product does not have valid points value',
+						StatusCodes.BAD_REQUEST,
+					);
+
+				const customer = await tx.query.customerMaster.findFirst({
+					where: isUUID
+						? eq(customerMaster.id, userIdentifier)
+						: eq(customerMaster.customerID, Number(userIdentifier)),
+					with: { loyaltyAccounts: true },
+				});
+
+				if (!customer)
+					throw new AppError(
+						'Customer not found',
+						StatusCodes.NOT_FOUND,
+					);
+
+				const account = customer.loyaltyAccounts;
+				if (!account)
+					throw new AppError(
+						'Loyalty account not found for this customer',
+						StatusCodes.NOT_FOUND,
+					);
+
+				const newBalance = account.points_balance + productPoints;
+				const newLifetime = account.lifetime_points + productPoints;
+
+				const [createdTx] = await tx
+					.insert(loyaltyTransactions)
+					.values({
+						customerID: customer.id,
+						account_id: account.id,
+						initialPoint: account.points_balance,
+						manipulatedPoint: productPoints,
+						totalPoint: newBalance,
+						description: `Earned ${productPoints} points for purchasing ${product.productName}`,
+						type: 'EARN',
+						metadata: {
+							productID,
+							productName: product.productName,
+							points: productPoints,
+						},
+						// createdBy: userId,
+						// updatedBy: userId,
+					})
+					.returning();
+
+				await tx
+					.update(loyaltyAccounts)
+					.set({
+						points_balance: newBalance,
+						lifetime_points: newLifetime,
+						last_transaction_at: new Date(),
+						updatedBy: customer.updatedBy,
+					})
+					.where(eq(loyaltyAccounts.id, account.id));
+
+				// Send points earned notification message
+				if (customer.phone) {
+					const customerName = customer.name || 'Customer';
+					this.customerService
+						.sendPointsEarnedMessage(
+							customer.phone,
+							productPoints,
+							newBalance,
+							customerName,
+						)
+						.catch((error) => {
+							logger.error(
+								'Failed to send points earned message',
+								{
+									error,
+									customerID: customer.customerID,
+									phone: customer.phone,
+									pointsAdded: productPoints,
+									newBalance,
+								},
+							);
+						});
+				}
+
+				logger.info('Points earned message', {
+					pointsAdded: productPoints,
+					newBalance,
+					customerID: customer.customerID,
+					phone: customer.phone,
+					customerName: customer.name,
+					resolvedUserId
+				});
+
+				return {
+					data: {
+						transaction: createdTx,
+						account: {
+							points_balance: newBalance,
+							lifetime_points: newLifetime,
+						},
+					},
+					message: `Successfully earned ${productPoints} points.`,
+				};
+			});
+		} catch (error) {
+			handleServiceError(
+				error,
+				'Failed to process loyalty transaction',
+				StatusCodes.INTERNAL_SERVER_ERROR,
+				'earnLoyaltyPoints',
+				{ userIdentifier, productID },
+			);
 		}
 	}
 }

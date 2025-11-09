@@ -21,7 +21,7 @@ export default class AuthWebController extends BaseApi {
 
 	public register(): Router {
 		this.router.post('/login', this.loginUser.bind(this));
-		this.router.get('/refresh', this.refreshToken.bind(this));
+		this.router.post('/refresh', this.refreshToken.bind(this));
 		this.router.post('/logout', this.logoutUser.bind(this));
 		return this.router;
 	}
@@ -111,6 +111,19 @@ export default class AuthWebController extends BaseApi {
 			defaultUserRole.roleId,
 		);
 
+		// Handle authentication mode: cookie or localStorage
+		if (env.AUTH_MODE === 'localStorage') {
+			// Return tokens in response body for localStorage storage
+			res.locals.data = {
+				accessToken,
+				refreshToken,
+			};
+			res.locals.message = 'Login Successful';
+			super.send(res);
+			return;
+		}
+
+		// Cookie mode (default): Set cookies
 		const domain = env.NODE_ENV !== 'local' ? env.COOKIE_DOMAIN : undefined;
 
 		res.cookie('accessToken', accessToken, {
@@ -250,6 +263,19 @@ export default class AuthWebController extends BaseApi {
 			{ expiresIn: '7d' },
 		);
 
+		// Handle authentication mode: cookie or localStorage
+		if (env.AUTH_MODE === 'localStorage') {
+			// Return tokens in response body for localStorage storage
+			res.locals.data = {
+				accessToken,
+				refreshToken: newRefreshToken,
+			};
+			res.locals.message = 'Tokens refreshed successfully';
+			super.send(res);
+			return;
+		}
+
+		// Cookie mode (default): Set cookies
 		const domain = env.NODE_ENV !== 'local' ? env.COOKIE_DOMAIN : undefined;
 		res.cookie('accessToken', accessToken, {
 			httpOnly: false,
@@ -273,17 +299,20 @@ export default class AuthWebController extends BaseApi {
 	}
 
 	public async logoutUser(req: Request, res: Response) {
-		res.clearCookie('accessToken', {
-			httpOnly: false,
-			secure: env.NODE_ENV !== 'local',
-			sameSite: 'strict',
-		});
+		// Only clear cookies if in cookie mode
+		if (env.AUTH_MODE === 'cookie') {
+			res.clearCookie('accessToken', {
+				httpOnly: false,
+				secure: env.NODE_ENV !== 'local',
+				sameSite: 'strict',
+			});
 
-		res.clearCookie('refreshToken', {
-			httpOnly: true,
-			secure: env.NODE_ENV !== 'local',
-			sameSite: 'strict',
-		});
+			res.clearCookie('refreshToken', {
+				httpOnly: true,
+				secure: env.NODE_ENV !== 'local',
+				sameSite: 'strict',
+			});
+		}
 
 		res.locals.data = {};
 		res.locals.message = 'Logged out successfully';

@@ -1,40 +1,30 @@
-// src/db/schema/customerGroupMembers.ts
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import { pgTable, bigint, timestamp, unique } from 'drizzle-orm/pg-core';
+import { pgTable, timestamp } from 'drizzle-orm/pg-core';
 import { uuid } from 'drizzle-orm/pg-core';
 import { users } from '../../users';
 import { customerMaster } from '../customer/customers';
 import { customerGroups } from './customerGroups';
 
-export const customerGroupMembers = pgTable(
-	'customer_group_members',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		groupId: uuid('group_id')
-			.notNull()
-			.references(() => customerGroups.id, { onDelete: 'cascade' }),
-		customerID: bigint('customer_id', { mode: 'number' })
-			.notNull()
-			.references(() => customerMaster.customerID, {
-				onDelete: 'cascade',
-			}),
+export const customerGroupMembers = pgTable('customer_group_members', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	groupId: uuid('group_id')
+		.notNull()
+		.unique()
+		.references(() => customerGroups.id, { onDelete: 'cascade' }),
+	customerID: uuid('customer_id')
+		.notNull()
+		.unique()
+		.references(() => customerMaster.id, { onDelete: 'cascade' }),
 
-		// 🔹 Audit fields - Fixed naming convention
-		createdBy: uuid('created_by').references(() => users.id, {
-			onDelete: 'set null',
-		}),
-		updatedBy: uuid('updated_by').references(() => users.id, {
-			onDelete: 'set null',
-		}),
-
-		createdAt: timestamp('created_at').defaultNow().notNull(),
-		updatedAt: timestamp('updated_at').defaultNow().notNull(),
-	},
-	(table) => ({
-		// ✅ Added composite unique constraint to prevent duplicate group memberships
-		uniqueGroupCustomer: unique().on(table.groupId, table.customerID),
+	createdBy: uuid('created_by').references(() => users.id, {
+		onDelete: 'set null',
 	}),
-);
+	updatedBy: uuid('updated_by').references(() => users.id, {
+		onDelete: 'set null',
+	}),
+	createdAt: timestamp('created_at').defaultNow().notNull(),
+	updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 export type SelectCustomerGroupMember = InferSelectModel<
 	typeof customerGroupMembers
@@ -43,23 +33,17 @@ export type InsertCustomerGroupMember = InferInsertModel<
 	typeof customerGroupMembers
 >;
 
-// ✅ Relations - Updated field references
 export const customerGroupMembersRelations = relations(
 	customerGroupMembers,
 	({ one }) => ({
-		// Each member belongs to one group
 		group: one(customerGroups, {
 			fields: [customerGroupMembers.groupId],
 			references: [customerGroups.id],
 		}),
-
-		// Each member belongs to one customer
 		customer: one(customerMaster, {
 			fields: [customerGroupMembers.customerID],
-			references: [customerMaster.customerID],
+			references: [customerMaster.id],
 		}),
-
-		// Audit trail users - Updated field names
 		createdByUser: one(users, {
 			fields: [customerGroupMembers.createdBy],
 			references: [users.id],

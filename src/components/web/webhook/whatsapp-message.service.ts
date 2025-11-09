@@ -171,14 +171,14 @@ export class WhatsAppMessageService {
 	/**
 	 * Send CTA URL message for adding points
 	 */
-	public async sendAddPointsCTA(to: string): Promise<void> {
+	public async sendAddPointsCTA(to: string, userId: number): Promise<void> {
 		try {
 			const headerText = 'Add Your Loyalty Points';
 			const bodyText =
 				'Hey 🌸, when you click the button below, a secure scanner will open.\n\n📸 Simply scan your product QR code to instantly claim your *Lush Reward Points!* 💎\n\nYour eco-luxury treats are just one scan away. 🌿';
 			const footerText = '🌼 Powered by Lush Loyalty Program';
-			const displayText = '➕ Add Points';
-			const ctaUrl = `${env.APP_URI}/add-points`;
+			const displayText = 'Scan QR Code';
+			const ctaUrl = `${env.APP_URI}redeem/camera/:id${userId}`;
 
 			const payload = {
 				messaging_product: 'whatsapp',
@@ -216,6 +216,7 @@ export class WhatsAppMessageService {
 			logger.info('Add Points CTA message sent successfully', {
 				to,
 				ctaUrl,
+				userId,
 				messageId: response.data?.messages?.[0]?.id,
 			});
 		} catch (error) {
@@ -223,6 +224,69 @@ export class WhatsAppMessageService {
 				error: error instanceof Error ? error.message : error,
 				errorResponse: (error as any)?.response?.data,
 				to,
+				userId,
+			});
+			throw error;
+		}
+	}
+
+	/**
+	 * Send CTA URL message for trying wigs
+	 */
+	public async sendTryWigsCTA(to: string, userId: number): Promise<void> {
+		try {
+			const headerText = '💇‍♀️ Try Wigs Instantly';
+			const bodyText =
+				'Ready to see the glow? Open our live try-on, switch styles in seconds, and buy the one you love.\n\nPro tip: Save your favorite look before checkout. 💖';
+			const footerText = '🌼 Lush • Wig Studio';
+			const displayText = 'Try Wigs Now';
+			const ctaUrl = `${env.APP_URI}/try/${userId}`;
+
+			const payload = {
+				messaging_product: 'whatsapp',
+				to,
+				type: 'interactive',
+				interactive: {
+					type: 'cta_url',
+					header: {
+						type: 'text',
+						text: headerText,
+					},
+					body: {
+						text: bodyText,
+					},
+					footer: {
+						text: footerText,
+					},
+					action: {
+						name: 'cta_url',
+						parameters: {
+							display_text: displayText,
+							url: ctaUrl,
+						},
+					},
+				},
+			};
+
+			const response = await axios.post(this.apiUrl, payload, {
+				headers: {
+					Authorization: `Bearer ${this.accessToken}`,
+					'Content-Type': 'application/json',
+				},
+			});
+
+			logger.info('Try Wigs CTA message sent successfully', {
+				to,
+				ctaUrl,
+				userId,
+				messageId: response.data?.messages?.[0]?.id,
+			});
+		} catch (error) {
+			logger.error('Failed to send Try Wigs CTA message', {
+				error: error instanceof Error ? error.message : error,
+				errorResponse: (error as any)?.response?.data,
+				to,
+				userId,
 			});
 			throw error;
 		}
@@ -303,7 +367,7 @@ export class WhatsAppMessageService {
 			const bodyText = `Hey ${customerName} 🌸\nYou're almost there! ✨\n\nYour selected items are waiting to be processed — please complete your payment to confirm your order. 💖\n\n🛍️ *Order Summary:*\n📦 Items: *${itemsCount}*\n💰 Total: *${totalAmount}*\n\nOnce the payment is confirmed, we'll begin preparing your order for dispatch right away! 🚚`;
 			const footerText = '🌼 Powered by Lush Loyalty Program';
 			const displayText = 'Pay Now';
-			const ctaUrl = `${env.APP_URI}/order/${orderId}/payment`;
+			const ctaUrl = `${env.APP_URI}/order/${orderId}`;
 
 			const payload = {
 				messaging_product: 'whatsapp',
@@ -352,6 +416,210 @@ export class WhatsAppMessageService {
 				errorResponse: (error as any)?.response?.data,
 				to,
 				customerName,
+			});
+			throw error;
+		}
+	}
+
+	/**
+	 * Send balance message showing loyalty points
+	 */
+	public async sendBalanceMessage(
+		to: string,
+		pointsBalance: number,
+		customerName: string,
+	): Promise<void> {
+		try {
+			const bodyText = `💰 *Your Lush Loyalty Balance*\n\nHey ${customerName}, you currently have *${pointsBalance} reward points!* ✨\n\nThat's enough to unlock some exclusive eco-luxury treats. 💎`;
+			const footerText = '🌼 Powered by Lush Loyalty Program';
+
+			const payload = {
+				messaging_product: 'whatsapp',
+				to,
+				type: 'interactive',
+				interactive: {
+					type: 'button',
+					body: {
+						text: bodyText,
+					},
+					footer: {
+						text: footerText,
+					},
+					action: {
+						buttons: [
+							{
+								type: 'reply',
+								reply: {
+									id: 'VIEW_CATALOG',
+									title: '🛍️ Shop Now',
+								},
+							},
+							{
+								type: 'reply',
+								reply: {
+									id: 'BACK',
+									title: '🔙 Back',
+								},
+							},
+						],
+					},
+				},
+			};
+
+			const response = await axios.post(this.apiUrl, payload, {
+				headers: {
+					Authorization: `Bearer ${this.accessToken}`,
+					'Content-Type': 'application/json',
+				},
+			});
+
+			logger.info('Balance message sent successfully', {
+				to,
+				pointsBalance,
+				messageId: response.data?.messages?.[0]?.id,
+			});
+		} catch (error) {
+			logger.error('Failed to send balance message', {
+				error: error instanceof Error ? error.message : error,
+				errorResponse: (error as any)?.response?.data,
+				to,
+				pointsBalance,
+			});
+			throw error;
+		}
+	}
+
+	/**
+	 * Send points earned notification message
+	 */
+	public async sendPointsEarnedMessage(
+		to: string,
+		pointsAdded: number,
+		newBalance: number,
+		customerName: string,
+	): Promise<void> {
+		try {
+			const bodyText = `🎉 *Points Earned!*\n\nHey ${customerName} 🌸\n\n✨ You've just earned *${pointsAdded} reward points!*\n\n💰 Your new balance is *${newBalance} points*.\n\nKeep earning to unlock more exclusive eco-luxury treats! 💎`;
+			const footerText = '🌼 Powered by Lush Loyalty Program';
+
+			const payload = {
+				messaging_product: 'whatsapp',
+				to,
+				type: 'interactive',
+				interactive: {
+					type: 'button',
+					body: {
+						text: bodyText,
+					},
+					footer: {
+						text: footerText,
+					},
+					action: {
+						buttons: [
+							{
+								type: 'reply',
+								reply: {
+									id: 'VIEW_CATALOG',
+									title: '🛍️ View Catalog',
+								},
+							},
+							{
+								type: 'reply',
+								reply: {
+									id: 'BACK',
+									title: '🔙 Back',
+								},
+							},
+						],
+					},
+				},
+			};
+
+			const response = await axios.post(this.apiUrl, payload, {
+				headers: {
+					Authorization: `Bearer ${this.accessToken}`,
+					'Content-Type': 'application/json',
+				},
+			});
+
+			logger.info('Points earned message sent successfully', {
+				to,
+				pointsAdded,
+				newBalance,
+				customerName,
+				messageId: response.data?.messages?.[0]?.id,
+			});
+		} catch (error) {
+			logger.error('Failed to send points earned message', {
+				error: error instanceof Error ? error.message : error,
+				errorResponse: (error as any)?.response?.data,
+				to,
+				pointsAdded,
+				newBalance,
+			});
+			throw error;
+		}
+	}
+
+	/**
+	 * Send product message from WhatsApp catalog
+	 */
+	public async sendProductMessage(
+		to: string,
+		productRetailerId: string,
+	): Promise<void> {
+		try {
+			const defaultBodyText =
+				"Wow ✨\nThat look was absolutely stunning on you! 💃\n\nWe've saved your favorite wig so you can make it yours today — before it sells out. 👑\n\nTap below to view your selected piece and complete your order in just a few seconds. 💖";
+			const defaultFooterText = 'Your glam moment awaits! 💫';
+
+			// Get catalog ID from env if not provided
+			const finalCatalogId = '2085125095564033';
+
+			if (!finalCatalogId) {
+				throw new Error(
+					'Catalog ID is required. Please provide catalogId parameter or set WHATSAPP_CATALOG_ID in environment variables.',
+				);
+			}
+
+			const payload = {
+				messaging_product: 'whatsapp',
+				to,
+				type: 'interactive',
+				interactive: {
+					type: 'product',
+					body: {
+						text: defaultBodyText,
+					},
+					footer: {
+						text: defaultFooterText,
+					},
+					action: {
+						catalog_id: finalCatalogId,
+						product_retailer_id: productRetailerId,
+					},
+				},
+			};
+
+			const response = await axios.post(this.apiUrl, payload, {
+				headers: {
+					Authorization: `Bearer ${this.accessToken}`,
+					'Content-Type': 'application/json',
+				},
+			});
+
+			logger.info('Product message sent successfully', {
+				to,
+				productRetailerId,
+				catalogId: finalCatalogId,
+				messageId: response.data?.messages?.[0]?.id,
+			});
+		} catch (error) {
+			logger.error('Failed to send product message', {
+				error: error instanceof Error ? error.message : error,
+				errorResponse: (error as any)?.response?.data,
+				to,
+				productRetailerId,
 			});
 			throw error;
 		}
