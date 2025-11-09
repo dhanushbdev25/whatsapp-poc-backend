@@ -757,6 +757,7 @@ export class WebhookWebService {
 				orderId: message?.order?.id,
 			});
 
+			let newOrder: any = null;
 			try {
 				await db.transaction(async (tx) => {
 					const customer =
@@ -770,7 +771,7 @@ export class WebhookWebService {
 						);
 					}
 
-					const [newOrder] = await tx
+					const [insertedOrder] = await tx
 						.insert(orders)
 						.values({
 							customerID: customer.id,
@@ -791,6 +792,8 @@ export class WebhookWebService {
 							},
 						})
 						.returning();
+
+					newOrder = insertedOrder;
 
 					logger.info('Order inserted successfully', {
 						orderId: newOrder.id,
@@ -870,7 +873,7 @@ export class WebhookWebService {
 				customerName,
 				itemsCount,
 				formattedTotal,
-				message?.order?.id,
+				newOrder?.id,
 			);
 
 			logger.info('Order confirmation sent successfully', {
@@ -878,7 +881,7 @@ export class WebhookWebService {
 				customerName,
 				itemsCount,
 				totalAmount: formattedTotal,
-				orderId: message?.order?.id,
+				orderId: newOrder?.id,
 			});
 		} catch (error) {
 			logger.error('Error handling order event', {
