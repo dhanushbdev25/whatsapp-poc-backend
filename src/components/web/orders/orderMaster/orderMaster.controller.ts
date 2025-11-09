@@ -364,6 +364,7 @@ export default class CustomerController extends BaseApi {
 					'Payment succeeded, Order moved to IN_PROGRESS, Loyalty updated',
 			};
 			super.send(res);
+			return;
 		}
 
 		// ❌ PAYMENT FAILED (OTHER STATUS)

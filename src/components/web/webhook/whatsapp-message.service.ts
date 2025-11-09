@@ -178,7 +178,7 @@ export class WhatsAppMessageService {
 				'Hey 🌸, when you click the button below, a secure scanner will open.\n\n📸 Simply scan your product QR code to instantly claim your *Lush Reward Points!* 💎\n\nYour eco-luxury treats are just one scan away. 🌿';
 			const footerText = '🌼 Powered by Lush Loyalty Program';
 			const displayText = 'Scan QR Code';
-			const ctaUrl = `${env.APP_URI}redeem/camera/:id${userId}`;
+			const ctaUrl = `${env.APP_URI}/redeem/camera/${userId}`;
 
 			const payload = {
 				messaging_product: 'whatsapp',
