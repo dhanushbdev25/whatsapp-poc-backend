@@ -99,8 +99,8 @@ export class CustomerWebService {
 				pincode,
 				gender: undefined, // Not collected in flow
 				isActive: true,
-				createdBy: 'whatsapp-flow',
-				updatedBy: 'whatsapp-flow',
+				createdBy: null, // WhatsApp flow - no user associated
+				updatedBy: null, // WhatsApp flow - no user associated
 				latestActive: new Date(),
 			};
 
