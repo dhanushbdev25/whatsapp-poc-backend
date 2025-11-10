@@ -472,9 +472,10 @@ export const customerService = {
 				);
 			}
 
-			// Check if customer exists
+			// Check if customer exists by customerID (business ID, not UUID)
+			// Convert customerID to number if it's a string
 			const customer = await db.query.customerMaster.findFirst({
-				where: eq(customerMaster.id, data.customerID),
+				where: eq(customerMaster.id, data.userId),
 			});
 
 			if (!customer) {
@@ -490,11 +491,11 @@ export const customerService = {
 				throw new AppError('Product not found', StatusCodes.NOT_FOUND);
 			}
 
-			// Insert new engagement record
+			// Insert new engagement record using customer.id (UUID) not customerID (bigint)
 			await db
 				.insert(customerProducts)
 				.values({
-					customerID: data.customerID,
+					customerID: data.userId, // Use UUID from customer record
 					productID: product.id,
 					// createdBy: data.userId,
 					// updatedBy: data.userId,
@@ -505,7 +506,7 @@ export const customerService = {
 			const createdEngagement = await db.query.customerProducts.findFirst(
 				{
 					where: and(
-						eq(customerProducts.customerID, data.customerID),
+						eq(customerProducts.customerID, data.userId), // Use UUID from customer record
 						eq(customerProducts.productID, product.id),
 					),
 					with: {
