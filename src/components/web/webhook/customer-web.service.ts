@@ -5,10 +5,10 @@ import { db } from '@/database';
 import {
 	customerMaster,
 	loyaltyAccounts,
-	type InsertCustomer,
 } from '@/database/schema';
 import logger from '@/lib/logger';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
+import { customerService } from '../customers/customerMaster/customerMaster.service';
 
 export class CustomerWebService {
 	private whatsappMessageService: WhatsAppMessageService;
@@ -88,45 +88,49 @@ export class CustomerWebService {
 			// Use wa_id as customer ID
 			const customerID = parseWaIdToCustomerID(waId);
 
-			// Prepare customer data
-			const customerData: InsertCustomer = {
-				customerID,
-				name: fullName,
-				email: email?.toLowerCase(),
-				phone,
-				address,
-				state: city,
-				pincode,
-				gender: undefined, // Not collected in flow
-				isActive: true,
-				createdBy: null, // WhatsApp flow - no user associated
-				updatedBy: null, // WhatsApp flow - no user associated
-				latestActive: new Date(),
-			};
+			// Ensure required fields have values
+			// Name is required - use phone number as fallback if name is not provided
+			const customerName = fullName || phone || 'Customer';
+			
+			// Email is required - generate a placeholder email if not provided
+			const customerEmail = email?.toLowerCase() || `${phone.replace(/\D/g, '')}@whatsapp.flow`;
 
-			// Insert customer
-			const [customer] = await db
-				.insert(customerMaster)
-				.values(customerData)
-				.returning({
-					id: customerMaster.id,
-					customerID: customerMaster.customerID,
-				});
+			// Phone is required - should always be available
+			if (!phone) {
+				throw new Error('Phone number is required to create customer');
+			}
 
-			if (!customer) {
+			// Call customer service to create customer
+			const result = await customerService.createCustomer(
+				{
+					customerID,
+					name: customerName,
+					email: customerEmail,
+					phone,
+					address,
+					state: city,
+					pincode,
+					// Gender not collected in flow, so it's optional
+				},
+				undefined, // userId - WhatsApp flow has no user associated
+			);
+
+			if (!result?.data) {
 				throw new Error('Failed to create customer');
 			}
+
+			const customer = result.data;
 
 			logger.info('Customer created from WhatsApp Flow', {
 				customerID: customer.customerID,
 				phone,
-				email,
-				name: fullName,
+				email: customerEmail,
+				name: customerName,
 			});
 
 			// Send enrollment confirmation message
 			// Extract template config from flow data if available
-			if (fullName && phone) {
+			if (customerName && phone) {
 				const templateName = 'lush_loyalty_main_menu_premium';
 				const headerImageUrl =
 					'https://mtbsapoc.blob.core.windows.net/whatsapppoccontainer/lush-products-main.jpg';
@@ -134,7 +138,7 @@ export class CustomerWebService {
 				this.whatsappMessageService
 					.sendEnrollmentConfirmation(
 						phone,
-						fullName,
+						customerName,
 						templateName,
 						headerImageUrl,
 					)
@@ -145,13 +149,13 @@ export class CustomerWebService {
 								error,
 								customerID: customer.customerID,
 								phone,
-								customerName: fullName,
+								customerName,
 							},
 						);
 					});
 			}
 
-			return { id: 'customer', customerID: customerID };
+			return { id: customer.id, customerID: customer.customerID || customerID };
 		} catch (error) {
 			return handleServiceError(
 				error,
