@@ -985,7 +985,7 @@ export class WebhookWebService {
 						'Product does not have valid points value',
 						StatusCodes.BAD_REQUEST,
 					);
-		
+
 				const customer = await tx.query.customerMaster.findFirst({
 					where: isUUID
 						? eq(customerMaster.id, userIdentifier)

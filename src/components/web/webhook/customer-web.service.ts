@@ -1,14 +1,11 @@
 import { sql } from 'drizzle-orm';
+import { customerService } from '../customers/customerMaster/customerMaster.service';
 import { parseWaIdToCustomerID, getFlowField } from './webhook-utils';
 import { WhatsAppMessageService } from './whatsapp-message.service';
 import { db } from '@/database';
-import {
-	customerMaster,
-	loyaltyAccounts,
-} from '@/database/schema';
+import { customerMaster, loyaltyAccounts } from '@/database/schema';
 import logger from '@/lib/logger';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
-import { customerService } from '../customers/customerMaster/customerMaster.service';
 
 export class CustomerWebService {
 	private whatsappMessageService: WhatsAppMessageService;
@@ -91,9 +88,11 @@ export class CustomerWebService {
 			// Ensure required fields have values
 			// Name is required - use phone number as fallback if name is not provided
 			const customerName = fullName || phone || 'Customer';
-			
+
 			// Email is required - generate a placeholder email if not provided
-			const customerEmail = email?.toLowerCase() || `${phone.replace(/\D/g, '')}@whatsapp.flow`;
+			const customerEmail =
+				email?.toLowerCase() ||
+				`${phone.replace(/\D/g, '')}@whatsapp.flow`;
 
 			// Phone is required - should always be available
 			if (!phone) {
@@ -155,7 +154,10 @@ export class CustomerWebService {
 					});
 			}
 
-			return { id: customer.id, customerID: customer.customerID || customerID };
+			return {
+				id: customer.id,
+				customerID: customer.customerID || customerID,
+			};
 		} catch (error) {
 			return handleServiceError(
 				error,
@@ -392,9 +394,7 @@ export class CustomerWebService {
 						pointsBalance: loyaltyAccounts.points_balance,
 					})
 					.from(loyaltyAccounts)
-					.where(
-						sql`${loyaltyAccounts.customerID} = ${customer.customerID}`,
-					)
+					.where(sql`${loyaltyAccounts.customerID} = ${customer.id}`)
 					.limit(1);
 
 				if (loyaltyAccount) {

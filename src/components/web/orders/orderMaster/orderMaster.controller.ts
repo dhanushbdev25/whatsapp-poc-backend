@@ -1,18 +1,18 @@
 // src/controllers/customerController.ts
+import { eq } from 'drizzle-orm';
 import { Request, Response, Router } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import multer from 'multer';
 import Stripe from 'stripe';
 import BaseApi from '../../../BaseApi';
+import { CustomerWebService } from '../../webhook/customer-web.service';
 import { customerService } from './orderMaster.service';
 import AppError from '@/abstractions/AppError';
-import env from '@/env';
-import { buildCustomersTemplate } from '@/utils/excelCustomers';
-import { CustomerWebService } from '../../webhook/customer-web.service';
 import { db } from '@/database';
 import { orders } from '@/database/schema';
-import { eq } from 'drizzle-orm';
+import env from '@/env';
 import logger from '@/lib/logger';
+import { buildCustomersTemplate } from '@/utils/excelCustomers';
 
 const STRIPE_SECRET_KEY = env.STRIPE_SECRET_KEY || '';
 const STRIPE_PUBLISHABLE_KEY = env.STRIPE_PUBLISHABLE_KEY || '';
@@ -346,11 +346,13 @@ export default class CustomerController extends BaseApi {
 				});
 			}
 
-
 			// 3) ADD +reudeced loyal point  EARN POINTS
 			// Step 1 - Redeem loyalty points before confirming payment
 			if (loyalty?.points_applied > 0) {
-				await customerService.redeemLoyaltyPoints(order.customerID, loyalty.points_applied);
+				await customerService.redeemLoyaltyPoints(
+					order.customerID,
+					loyalty.points_applied,
+				);
 			}
 
 			// 4) SEND PAYMENT CONFIRMATION MESSAGE

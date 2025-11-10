@@ -12,6 +12,7 @@ import {
 	orders,
 	products,
 } from '@/database/schema';
+import logger from '@/lib/logger';
 import { parseCustomersExcel } from '@/utils/excelCustomers';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
 
@@ -105,11 +106,21 @@ export const customerService = {
 		}
 	},
 
-	async redeemLoyaltyPoints(customerID: string, pointsToRedeem: number, userId?: string) {
+	async redeemLoyaltyPoints(
+		customerID: string,
+		pointsToRedeem: number,
+		userId?: string,
+	) {
 		try {
 			if (!pointsToRedeem || pointsToRedeem <= 0) {
 				return { message: 'No loyalty points redeemed', data: null };
 			}
+
+			logger.info('Redeeming loyalty points', {
+				customerID,
+				pointsToRedeem,
+				userId,
+			});
 
 			// Get loyalty account
 			const account = await db.query.loyaltyAccounts.findFirst({
@@ -117,12 +128,18 @@ export const customerService = {
 			});
 
 			if (!account) {
-				throw new AppError('Loyalty account does not exist', StatusCodes.NOT_FOUND);
+				throw new AppError(
+					'Loyalty account does not exist',
+					StatusCodes.NOT_FOUND,
+				);
 			}
 
 			// Ensure sufficient balance
 			if (account.points_balance < pointsToRedeem) {
-				throw new AppError('Insufficient loyalty points', StatusCodes.BAD_REQUEST);
+				throw new AppError(
+					'Insufficient loyalty points',
+					StatusCodes.BAD_REQUEST,
+				);
 			}
 
 			const updatedBalance = account.points_balance - pointsToRedeem;
@@ -155,7 +172,6 @@ export const customerService = {
 			});
 			console.log(ddata);
 
-
 			return {
 				message: `${pointsToRedeem} points redeemed successfully`,
 				data: updatedAccount,
@@ -170,7 +186,6 @@ export const customerService = {
 			);
 		}
 	},
-
 
 	/**
 	 *  Create new customer with notification preferences
