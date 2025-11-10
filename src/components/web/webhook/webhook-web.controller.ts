@@ -77,27 +77,10 @@ export default class WebhookWebController extends BaseApi {
 			);
 		}
 
-		// Validate UUID format
-		const uuidRegex = /^[0-9a-fA-F-]{36}$/;
-		if (!uuidRegex.test(productID)) {
-			throw new AppError(
-				'Invalid product ID format',
-				StatusCodes.BAD_REQUEST,
-			);
-		}
-		if (!uuidRegex.test(customerID)) {
-			throw new AppError(
-				'Invalid customer ID format',
-				StatusCodes.BAD_REQUEST,
-			);
-		}
-
-		// Fetch default WhatsApp user if userId not provided
 		let resolvedUserId: string;
 		if (userId) {
 			resolvedUserId = String(userId);
 		} else {
-			// Fetch from database where name = 'whatsapp'
 			const whatsappUser = await db
 				.select({ id: users.id })
 				.from(users)
@@ -114,7 +97,6 @@ export default class WebhookWebController extends BaseApi {
 			resolvedUserId = whatsappUser[0].id;
 		}
 
-		// Proceed with service call
 		const { data, message } = await this.webhookService.earnLoyaltyPoints(
 			String(customerID),
 			String(productID),

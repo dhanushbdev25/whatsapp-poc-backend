@@ -959,13 +959,17 @@ export class WebhookWebService {
 		}
 	}
 
-	async earnLoyaltyPoints(userIdentifier: string, productID: string, resolvedUserId: string) {
+	async earnLoyaltyPoints(
+		userIdentifier: string,
+		productID: string,
+		resolvedUserId: string,
+	) {
 		try {
 			const isUUID = /^[0-9a-fA-F-]{36}$/.test(userIdentifier);
-
+			const isproductUUID = /^[0-9a-fA-F-]{36}$/.test(productID);
 			return await db.transaction(async (tx) => {
 				const product = await tx.query.products.findFirst({
-					where: isUUID
+					where: isproductUUID
 						? eq(products.id, productID)
 						: eq(products.contentId, productID),
 				});
@@ -981,7 +985,7 @@ export class WebhookWebService {
 						'Product does not have valid points value',
 						StatusCodes.BAD_REQUEST,
 					);
-
+		
 				const customer = await tx.query.customerMaster.findFirst({
 					where: isUUID
 						? eq(customerMaster.id, userIdentifier)
@@ -1065,7 +1069,7 @@ export class WebhookWebService {
 					customerID: customer.customerID,
 					phone: customer.phone,
 					customerName: customer.name,
-					resolvedUserId
+					resolvedUserId,
 				});
 
 				return {

@@ -38,7 +38,6 @@ export const customerService = {
 	async getAllCustomers() {
 		try {
 			const customers = await db.query.customerMaster.findMany({
-				where: eq(customerMaster.isActive, true),
 				orderBy: [orderDesc(customerMaster.createdAt)],
 				with: {
 					notificationPreferences: true,

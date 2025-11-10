@@ -8,6 +8,11 @@ import { customerService } from './orderMaster.service';
 import AppError from '@/abstractions/AppError';
 import env from '@/env';
 import { buildCustomersTemplate } from '@/utils/excelCustomers';
+import { CustomerWebService } from '../../webhook/customer-web.service';
+import { db } from '@/database';
+import { orders } from '@/database/schema';
+import { eq } from 'drizzle-orm';
+import logger from '@/lib/logger';
 
 const STRIPE_SECRET_KEY = env.STRIPE_SECRET_KEY || '';
 const STRIPE_PUBLISHABLE_KEY = env.STRIPE_PUBLISHABLE_KEY || '';
@@ -22,8 +27,11 @@ function getStripe() {
 }
 
 export default class CustomerController extends BaseApi {
+	private customerWebService: CustomerWebService;
+
 	constructor() {
 		super();
+		this.customerWebService = new CustomerWebService();
 	}
 
 	public register(): Router {
@@ -338,10 +346,61 @@ export default class CustomerController extends BaseApi {
 				});
 			}
 
-			// 3) ADD +200 EARN POINTS
-			// await customerService.addLoyaltyPointsTransactions(order.customerID, actingUserId);
 
-			// 4) SEND RESPONSE
+			// 3) ADD +reudeced loyal point  EARN POINTS
+			// Step 1 - Redeem loyalty points before confirming payment
+			if (loyalty?.points_applied > 0) {
+				await customerService.redeemLoyaltyPoints(order.customerID, loyalty.points_applied);
+			}
+
+			// 4) SEND PAYMENT CONFIRMATION MESSAGE
+			try {
+				// Fetch order with customer info
+				const orderWithCustomer = await db.query.orders.findFirst({
+					where: eq(orders.orderNo, orderNo),
+					with: {
+						customer: true,
+					},
+				});
+
+				if (orderWithCustomer?.customer?.phone) {
+					const customerName =
+						orderWithCustomer.customer.name || 'Customer';
+					const deliveryDays = 3; // Hard coded as requested
+					const formattedAmount = order.amount.toFixed(2);
+
+					await this.customerWebService.sendPaymentConfirmation(
+						orderWithCustomer.customer.phone,
+						customerName,
+						orderNo,
+						formattedAmount,
+						order.currency,
+						deliveryDays,
+					);
+
+					logger.info('Payment confirmation message sent', {
+						orderNo,
+						phoneNumber: orderWithCustomer.customer.phone,
+						customerName,
+					});
+				} else {
+					logger.warn(
+						'Could not send payment confirmation: customer phone not found',
+						{
+							orderNo,
+							customerID: order.customerID,
+						},
+					);
+				}
+			} catch (messageError) {
+				// Log error but don't fail the payment flow
+				logger.error('Failed to send payment confirmation message', {
+					error: messageError,
+					orderNo,
+				});
+			}
+
+			// 5) SEND RESPONSE
 
 			res.locals = {
 				data: {

@@ -105,6 +105,73 @@ export const customerService = {
 		}
 	},
 
+	async redeemLoyaltyPoints(customerID: string, pointsToRedeem: number, userId?: string) {
+		try {
+			if (!pointsToRedeem || pointsToRedeem <= 0) {
+				return { message: 'No loyalty points redeemed', data: null };
+			}
+
+			// Get loyalty account
+			const account = await db.query.loyaltyAccounts.findFirst({
+				where: eq(loyaltyAccounts.customerID, customerID),
+			});
+
+			if (!account) {
+				throw new AppError('Loyalty account does not exist', StatusCodes.NOT_FOUND);
+			}
+
+			// Ensure sufficient balance
+			if (account.points_balance < pointsToRedeem) {
+				throw new AppError('Insufficient loyalty points', StatusCodes.BAD_REQUEST);
+			}
+
+			const updatedBalance = account.points_balance - pointsToRedeem;
+			const updatedRedeemed = account.points_redeemed + pointsToRedeem;
+
+			// Update loyalty balance
+			const [updatedAccount] = await db
+				.update(loyaltyAccounts)
+				.set({
+					points_balance: updatedBalance,
+					points_redeemed: updatedRedeemed,
+					last_transaction_at: new Date(),
+					// updatedBy: userId,
+					updatedAt: new Date(),
+				})
+				.where(eq(loyaltyAccounts.id, account.id))
+				.returning();
+
+			// Insert REDEEM transaction
+			const ddata = await db.insert(loyaltyTransactions).values({
+				customerID,
+				account_id: account.id,
+				initialPoint: account.points_balance,
+				manipulatedPoint: -pointsToRedeem,
+				totalPoint: updatedBalance,
+				type: 'REDEEM',
+				description: 'Points redeemed on order payment',
+				// createdBy: userId,
+				// updatedBy: userId,
+			});
+			console.log(ddata);
+
+
+			return {
+				message: `${pointsToRedeem} points redeemed successfully`,
+				data: updatedAccount,
+			};
+		} catch (error) {
+			handleServiceError(
+				error,
+				'Failed to redeem loyalty points',
+				StatusCodes.INTERNAL_SERVER_ERROR,
+				'Error in redeemLoyaltyPoints service',
+				{ customerID, pointsToRedeem },
+			);
+		}
+	},
+
+
 	/**
 	 *  Create new customer with notification preferences
 	 */

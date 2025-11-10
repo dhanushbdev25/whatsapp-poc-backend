@@ -280,6 +280,27 @@ export class CustomerWebService {
 	}
 
 	/**
+	 * Send payment confirmation interactive message
+	 */
+	public async sendPaymentConfirmation(
+		phoneNumber: string,
+		customerName: string,
+		orderNo: string,
+		orderAmount: string,
+		currency: string,
+		deliveryDays: number = 3,
+	): Promise<void> {
+		await this.whatsappMessageService.sendPaymentConfirmation(
+			phoneNumber,
+			customerName,
+			orderNo,
+			orderAmount,
+			currency,
+			deliveryDays,
+		);
+	}
+
+	/**
 	 * Send catalog message
 	 */
 	public async sendCatalogMessage(
