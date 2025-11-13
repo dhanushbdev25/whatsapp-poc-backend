@@ -33,6 +33,8 @@ export const products = pgTable('products', {
 	currency: varchar('currency', { length: 10 }).default('NGN'),
 	type: varchar('type', { length: 50 }),
 	metadata: jsonb('metadata'),
+	image_url: varchar('image_url', { length: 255 }),
+	redirection_url: varchar('redirection_url', { length: 255 }),
 	points: integer('numbers'),
 	createdBy: uuid('created_by').references(() => users.id, {
 		onDelete: 'set null',
