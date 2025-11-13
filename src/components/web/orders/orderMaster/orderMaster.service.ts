@@ -13,6 +13,7 @@ import {
 } from '@/database/schema';
 import logger from '@/lib/logger';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
+import { DbOrTx } from '@/database/transactionType/transactionType';
 
 interface CreateCustomerInput {
 	name: string;
@@ -33,89 +34,72 @@ interface CreateCustomerInput {
 type UpdateCustomerInput = Partial<CreateCustomerInput>;
 
 export const customerService = {
-	async redeemLoyaltyPoints(
-		customerID: string,
-		pointsToRedeem: number,
-		userId?: string,
-	) {
-		try {
-			if (!pointsToRedeem || pointsToRedeem <= 0) {
-				return { message: 'No loyalty points redeemed', data: null };
-			}
 
-			logger.info('Redeeming loyalty points', {
-				customerID,
-				pointsToRedeem,
-				userId,
-			});
-
-			// Get loyalty account
-			const account = await db.query.loyaltyAccounts.findFirst({
-				where: eq(loyaltyAccounts.customerID, customerID),
-			});
-
-			if (!account) {
-				throw new AppError(
-					'Loyalty account does not exist',
-					StatusCodes.NOT_FOUND,
-				);
-			}
-
-			// Ensure sufficient balance
-			if (account.points_balance < pointsToRedeem) {
-				throw new AppError(
-					'Insufficient loyalty points',
-					StatusCodes.BAD_REQUEST,
-				);
-			}
-
-			const updatedBalance = account.points_balance - pointsToRedeem;
-			const updatedRedeemed = account.points_redeemed + pointsToRedeem;
-
-			// Update loyalty balance
-			const [updatedAccount] = await db
-				.update(loyaltyAccounts)
-				.set({
-					points_balance: updatedBalance,
-					points_redeemed: updatedRedeemed,
-					last_transaction_at: new Date(),
-					// updatedBy: userId,
-					updatedAt: new Date(),
-				})
-				.where(eq(loyaltyAccounts.id, account.id))
-				.returning();
-
-			// Insert REDEEM transaction
-			const ddata = await db.insert(loyaltyTransactions).values({
-				customerID,
-				account_id: account.id,
-				initialPoint: account.points_balance,
-				manipulatedPoint: -pointsToRedeem,
-				totalPoint: updatedBalance,
-				type: 'REDEEM',
-				description: 'Points redeemed on order payment',
-				// createdBy: userId,
-				// updatedBy: userId,
-			});
-			console.log(ddata);
-
-			return {
-				message: `${pointsToRedeem} points redeemed successfully`,
-				data: updatedAccount,
-			};
-		} catch (error) {
-			handleServiceError(
-				error,
-				'Failed to redeem loyalty points',
-				StatusCodes.INTERNAL_SERVER_ERROR,
-				'Error in redeemLoyaltyPoints service',
-				{ customerID, pointsToRedeem },
-			);
+async redeemLoyaltyPoints(
+	customerID: string,
+	pointsToRedeem: number,
+	userId?: string,
+	txOrDb: DbOrTx = db
+) {
+	try {
+		if (!pointsToRedeem || pointsToRedeem <= 0) {
+			return { message: "No loyalty points redeemed", data: null };
 		}
-	},
-	async updateOrderStatus(orderNo: any, userId?: any) {
+
+		const account = await db.query.loyaltyAccounts.findFirst({
+			where: eq(loyaltyAccounts.customerID, customerID),
+		});
+
+		if (!account) {
+			throw new AppError("Loyalty account does not exist", StatusCodes.NOT_FOUND);
+		}
+
+		// if (account.points_balance < pointsToRedeem) {
+		// 	throw new AppError("Insufficient loyalty points", StatusCodes.BAD_REQUEST);
+		// }
+
+		const updatedBalance = account.points_balance - pointsToRedeem;
+		const updatedRedeemed = account.points_redeemed + pointsToRedeem;
+
+		const [updatedAccount] = await txOrDb
+			.update(loyaltyAccounts)
+			.set({
+				points_balance: updatedBalance,
+				points_redeemed: updatedRedeemed,
+				last_transaction_at: new Date(),
+				updatedAt: new Date(),
+			})
+			.where(eq(loyaltyAccounts.id, account.id))
+			.returning();
+
+		await txOrDb.insert(loyaltyTransactions).values({
+			customerID,
+			account_id: account.id,
+			initialPoint: account.points_balance,
+			manipulatedPoint: -pointsToRedeem,
+			totalPoint: updatedBalance,
+			type: "REDEEM",
+			description: "Points redeemed on order payment",
+		});
+
+		return {
+			message: `${pointsToRedeem} points redeemed successfully`,
+			data: updatedAccount,
+		};
+	} catch (error) {
+		handleServiceError(
+			error,
+			"Failed to redeem loyalty points",
+			StatusCodes.INTERNAL_SERVER_ERROR,
+			"Error in redeemLoyaltyPoints service",
+			{ customerID, pointsToRedeem }
+		);
+	}
+}
+,
+
+	async updateOrderStatus(orderNo: any, userId?: any, txOrDb: DbOrTx = db) {
 		try {
-			// Check if order exists
 			const existingOrder = await db.query.orders.findFirst({
 				where: eq(orders.orderNo, orderNo),
 			});
@@ -124,7 +108,6 @@ export const customerService = {
 				throw new AppError('Order not found', StatusCodes.NOT_FOUND);
 			}
 
-			// Check status
 			if (existingOrder.status !== 'new') {
 				throw new AppError(
 					'Order cannot be updated. Only orders with status NEW can be moved to IN_PROGRESS.',
@@ -132,8 +115,7 @@ export const customerService = {
 				);
 			}
 
-			// Update status to IN_PROGRESS
-			await db
+			await txOrDb
 				.update(orders)
 				.set({
 					status: 'inprogress',
@@ -160,6 +142,7 @@ export const customerService = {
 			);
 		}
 	},
+
 	async createCustomerProduct(data: any) {
 		try {
 			// Validate input
@@ -169,12 +152,14 @@ export const customerService = {
 					StatusCodes.BAD_REQUEST,
 				);
 			}
-			const isUUID = typeof data.customerID === 'string' && data.customerID.includes('-');
+			const isUUID =
+				typeof data.customerID === 'string' &&
+				data.customerID.includes('-');
 
 			const customer = await db.query.customerMaster.findFirst({
 				where: isUUID
 					? eq(customerMaster.id, data.customerID)
-					: eq(customerMaster.customerID, Number(data.customerID))
+					: eq(customerMaster.customerID, Number(data.customerID)),
 			});
 
 			if (!customer) {
@@ -321,81 +306,70 @@ export const customerService = {
 			);
 		}
 	},
-	async deductLoyaltyPoints({
-		customerID,
-		points,
-		orderNo,
-		userId,
-	}: {
-		customerID: string;
-		points: number;
-		orderNo: string;
-		userId?: string;
-	}) {
-		try {
-			const account = await db.query.loyaltyAccounts.findFirst({
-				where: eq(loyaltyAccounts.customerID, customerID),
-			});
 
-			if (!account) {
-				throw new AppError(
-					'Loyalty account not found',
-					StatusCodes.NOT_FOUND,
-				);
-			}
+async deductLoyaltyPoints(
+	{ customerID, points, orderNo, userId }: { customerID: string; points: number; orderNo: string; userId?: string },
+	txOrDb: DbOrTx = db
+) {
+	try {
+		const account = await db.query.loyaltyAccounts.findFirst({
+			where: eq(loyaltyAccounts.customerID, customerID),
+		});
 
-			if (account.points_balance < points) {
-				throw new AppError(
-					'Insufficient loyalty points',
-					StatusCodes.BAD_REQUEST,
-				);
-			}
-
-			const previousBalance = account.points_balance;
-			const newBalance = previousBalance - points;
-			const newRedeemedTotal = account.points_redeemed + points;
-
-			const [updatedAccount] = await db
-				.update(loyaltyAccounts)
-				.set({
-					points_balance: newBalance,
-					points_redeemed: newRedeemedTotal,
-					last_transaction_at: new Date(),
-					updatedBy: userId,
-					updatedAt: new Date(),
-				})
-				.where(eq(loyaltyAccounts.id, account.id))
-				.returning();
-
-			await db.insert(loyaltyTransactions).values({
-				customerID,
-				account_id: account.id,
-				initialPoint: previousBalance,
-				manipulatedPoint: -points,
-				totalPoint: newBalance,
-				type: 'REDEEM',
-				description: `Redeemed ${points} points`,
-				orderNo,
-				createdBy: userId,
-				updatedBy: userId,
-			});
-
-			return {
-				previous_balance: previousBalance,
-				new_balance: newBalance,
-				new_points_redeemed_total: newRedeemedTotal,
-				lifetime_points: updatedAccount.lifetime_points,
-			};
-		} catch (error) {
-			handleServiceError(
-				error,
-				'Failed to redeem loyalty points',
-				StatusCodes.INTERNAL_SERVER_ERROR,
-				'Error in redeemPoints service',
-				{ customerID, points, orderNo, userId },
-			);
+		if (!account) {
+			throw new AppError("Loyalty account not found", StatusCodes.NOT_FOUND);
 		}
-	},
+
+		// if (account.points_balance < points) {
+		// 	throw new AppError("Insufficient loyalty points", StatusCodes.BAD_REQUEST);
+		// }
+
+		const previousBalance = account.points_balance;
+		const newBalance = previousBalance - points;
+		const newRedeemedTotal = account.points_redeemed + points;
+
+		const [updatedAccount] = await txOrDb
+			.update(loyaltyAccounts)
+			.set({
+				points_balance: newBalance,
+				points_redeemed: newRedeemedTotal,
+				last_transaction_at: new Date(),
+				updatedBy: userId,
+				updatedAt: new Date(),
+			})
+			.where(eq(loyaltyAccounts.id, account.id))
+			.returning();
+
+		await txOrDb.insert(loyaltyTransactions).values({
+			customerID,
+			account_id: account.id,
+			initialPoint: previousBalance,
+			manipulatedPoint: -points,
+			totalPoint: newBalance,
+			type: "REDEEM",
+			description: `Redeemed ${points} points`,
+			orderNo,
+			createdBy: userId,
+			updatedBy: userId,
+		});
+
+		return {
+			previous_balance: previousBalance,
+			new_balance: newBalance,
+			new_points_redeemed_total: newRedeemedTotal,
+			lifetime_points: updatedAccount.lifetime_points,
+		};
+	} catch (error) {
+		handleServiceError(
+			error,
+			"Failed to redeem loyalty points",
+			StatusCodes.INTERNAL_SERVER_ERROR,
+			"Error in redeemPoints service",
+			{ customerID, points, orderNo, userId }
+		);
+	}
+}
+,
 	async getOrderById(id: string, _userId?: string) {
 		try {
 			const order = await db.query.orders.findFirst({
