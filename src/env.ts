@@ -66,6 +66,7 @@ const envSchema = z.object({
 	WHATSAPP_PHONE_NUMBER_ID: z.string(),
 	WHATSAPP_API_VERSION: z.string().optional(),
 	TZ: z.string().default('UTC'),
+	WHATSAPP_TRY_ON_BASE_API: z.string(),
 
 	STRIPE_SECRET_KEY: z.string().optional(),
 	STRIPE_PUBLISHABLE_KEY: z.string().optional(),

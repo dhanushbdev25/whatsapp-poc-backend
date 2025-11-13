@@ -1,17 +1,18 @@
-import { eq, desc as orderDesc, and, inArray, sql } from 'drizzle-orm';
+import axios from 'axios';
+import { eq, desc as orderDesc, and, inArray, sql, asc } from 'drizzle-orm';
 import { StatusCodes } from 'http-status-codes';
 import { db } from '../../../../database';
-import { WhatsAppMessageService } from '../../webhook/whatsapp-message.service';
 import AppError from '@/abstractions/AppError';
 import {
 	customerMaster,
-	customerProducts,
 	loyaltyAccounts,
-	loyaltyTransactions,
 	notificationPreferences,
+	orderItems,
 	orders,
 	products,
+	tiers,
 } from '@/database/schema';
+import env from '@/env';
 import { parseCustomersExcel } from '@/utils/excelCustomers';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
 
@@ -67,15 +68,17 @@ export const customerService = {
 				with: {
 					notificationPreferences: true,
 					loyaltyAccounts: true,
-					orders: {
-						orderBy: (orderItems, { desc }) => [
-							desc(orderItems.createdAt),
-						],
+					loyaltyTransactions: {
+						orderBy: (tx, { desc }) => [desc(tx.createdAt)],
 						limit: 10,
 					},
-					customerGroupMembers: {
-						with: { group: true },
+					orders: {
+						orderBy: (o, { desc }) => [desc(o.createdAt)],
+						with: {
+							orderItems: { with: { product: true } },
+						},
 					},
+					customerGroupMembers: { with: { group: true } },
 				},
 			});
 
@@ -83,7 +86,88 @@ export const customerService = {
 				throw new AppError('Customer not found', StatusCodes.NOT_FOUND);
 			}
 
-			return { data: customer, message: 'Customer fetched successfully' };
+			const totalOrders = customer.orders?.length || 0;
+			const loyaltyPoints = customer.loyaltyAccounts?.points_balance ?? 0;
+
+			const statsResult = await db
+				.select({
+					totalSpent: sql<number>`COALESCE(SUM(${products.amount} * ${orderItems.qty}), 0)`,
+					totalItems: sql<number>`COALESCE(SUM(${orderItems.qty}), 0)`,
+				})
+				.from(orders)
+				.leftJoin(orderItems, eq(orderItems.orderID, orders.id))
+				.leftJoin(products, eq(products.id, orderItems.productID))
+				.where(eq(orders.customerID, customerId));
+
+			const totalSpent = statsResult[0]?.totalSpent ?? 0;
+			const totalItems = statsResult[0]?.totalItems ?? 0;
+			const avgOrderValue =
+				totalOrders > 0 ? totalSpent / totalOrders : 0;
+
+			const topProductResult = await db
+				.select({
+					productID: products.id,
+					productName: products.productName,
+					totalQuantity: sql<number>`SUM(${orderItems.qty})`,
+				})
+				.from(orders)
+				.leftJoin(orderItems, eq(orderItems.orderID, orders.id))
+				.leftJoin(products, eq(products.id, orderItems.productID))
+				.where(eq(orders.customerID, customerId))
+				.groupBy(products.id, products.productName)
+				.orderBy(orderDesc(sql`SUM(${orderItems.qty})`))
+				.limit(1);
+
+			const mostPurchasedProduct = topProductResult[0]
+				? {
+					productID: topProductResult[0].productID,
+					productName: topProductResult[0].productName,
+					totalQuantity: topProductResult[0].totalQuantity,
+				}
+				: null;
+
+			const allTiers = await db
+				.select()
+				.from(tiers)
+				.orderBy(asc(tiers.points_required));
+
+			const lifetimePoints =
+				customer.loyaltyAccounts?.lifetime_points ?? 0;
+
+			let currentTier = allTiers[0];
+			let nextTier: (typeof allTiers)[0] | null = null;
+
+			for (let i = 0; i < allTiers.length; i++) {
+				if (lifetimePoints >= allTiers[i].points_required) {
+					currentTier = allTiers[i];
+					nextTier = allTiers[i + 1] ?? null;
+				}
+			}
+
+			const tierProgress = {
+				currentTier: currentTier?.tier_name ?? null,
+				nextTier: nextTier?.tier_name ?? null,
+				currentLoyaltyPoints: lifetimePoints,
+				currentTierPoints: currentTier?.points_required ?? 0,
+				nextTierPoints: nextTier?.points_required ?? null,
+			};
+			const customerWithStats = {
+				...customer,
+				quickStats: {
+					totalOrders,
+					totalItems,
+					loyaltyPoints,
+					totalSpent,
+					avgOrderValue,
+					mostPurchasedProduct,
+				},
+				tierProgress,
+			};
+
+			return {
+				data: customerWithStats,
+				message: 'Customer fetched successfully',
+			};
 		} catch (error) {
 			handleServiceError(
 				error,
@@ -103,14 +187,21 @@ export const customerService = {
 		try {
 			// Check if email already exists
 			const existing = await db.query.customerMaster.findFirst({
-				where: eq(customerMaster.email, data.email),
+				where: eq(customerMaster.phone, data.phone),
 			});
 			if (existing)
 				throw new AppError(
-					'Customer with this email already exists',
+					'Customer with this phone no already exists',
 					StatusCodes.CONFLICT,
 				);
-
+			const existingID = await db.query.customerMaster.findFirst({
+				where: eq(customerMaster.customerID, data.customerID),
+			});
+			if (existingID)
+				throw new AppError(
+					'Customer with this Customer ID already exists',
+					StatusCodes.CONFLICT,
+				);
 			// Create new customer
 			const [createdCustomer] = await db
 				.insert(customerMaster)
@@ -298,241 +389,6 @@ export const customerService = {
 		}
 	},
 
-	async updateOrderStatus(orderNo: any, userId?: string) {
-		try {
-			// Check if order exists
-			const existingOrder = await db.query.orders.findFirst({
-				where: eq(orders.orderNo, orderNo),
-			});
-
-			if (!existingOrder) {
-				throw new AppError('Order not found', StatusCodes.NOT_FOUND);
-			}
-
-			// Check status
-			if (existingOrder.status !== 'new') {
-				throw new AppError(
-					'Order cannot be updated. Only orders with status NEW can be moved to IN_PROGRESS.',
-					StatusCodes.CONFLICT,
-				);
-			}
-
-			// Update status to IN_PROGRESS
-			await db
-				.update(orders)
-				.set({
-					status: 'inprogress',
-					updatedBy: userId,
-					updatedAt: new Date(),
-				})
-				.where(eq(orders.orderNo, orderNo));
-
-			const updatedOrder = await db.query.orders.findFirst({
-				where: eq(orders.orderNo, orderNo),
-			});
-
-			return {
-				data: updatedOrder,
-				message: 'Order status updated to IN_PROGRESS successfully',
-			};
-		} catch (error) {
-			handleServiceError(
-				error,
-				'Failed to update order status',
-				StatusCodes.INTERNAL_SERVER_ERROR,
-				'Error in updateOrderStatus service',
-				{ orderNo, userId },
-			);
-		}
-	},
-	async createCustomerProduct(
-		data: { customerID: string; productID: string },
-		userId?: string,
-	) {
-		try {
-			// Validate input
-			if (!data.customerID || !data.productID) {
-				throw new AppError(
-					'customerID and productID are required',
-					StatusCodes.BAD_REQUEST,
-				);
-			}
-
-			// Check if customer exists
-			const customer = await db.query.customerMaster.findFirst({
-				where: eq(customerMaster.id, data.customerID),
-			});
-
-			if (!customer) {
-				throw new AppError('Customer not found', StatusCodes.NOT_FOUND);
-			}
-
-			// Check if product exists
-			const product = await db.query.products.findFirst({
-				where: eq(products.id, data.productID),
-			});
-
-			if (!product) {
-				throw new AppError('Product not found', StatusCodes.NOT_FOUND);
-			}
-
-			// Prevent duplicate engagement
-			// const exists = await db.query.customerProducts.findFirst({
-			// 	where: and(
-			// 		eq(customerProducts.customerID, data.customerID),
-			// 		eq(customerProducts.productID, data.productID),
-			// 	),
-			// });
-
-			// if (exists) {
-			// 	throw new AppError(
-			// 		'This product is already linked to the customer',
-			// 		StatusCodes.CONFLICT,
-			// 	);
-			// }
-
-			// Insert new engagement record
-			await db
-				.insert(customerProducts)
-				.values({
-					customerID: data.customerID,
-					productID: data.productID,
-					createdBy: userId,
-					updatedBy: userId,
-				})
-				.returning();
-
-			// Return full populated entity (optional but good UX)
-			const createdEngagement = await db.query.customerProducts.findFirst(
-				{
-					where: and(
-						eq(customerProducts.customerID, data.customerID),
-						eq(customerProducts.productID, data.productID),
-					),
-					with: {
-						customer: true,
-						product: true,
-					},
-				},
-			);
-
-			// Send WhatsApp product message
-			if (
-				createdEngagement?.customer?.phone &&
-				createdEngagement?.product?.contentId
-			) {
-				try {
-					const whatsappService = new WhatsAppMessageService();
-					await whatsappService.sendProductMessage(
-						createdEngagement.customer.phone,
-						createdEngagement.product.contentId,
-					);
-				} catch (error) {
-					// Log error but don't fail the engagement creation
-					console.error(
-						'Failed to send WhatsApp product message:',
-						error,
-					);
-				}
-			}
-
-			return {
-				data: createdEngagement,
-				message: 'Customer product engagement recorded successfully',
-			};
-		} catch (error) {
-			handleServiceError(
-				error,
-				'Failed to create customer product engagement',
-				StatusCodes.INTERNAL_SERVER_ERROR,
-				'Error in createCustomerProduct service',
-				{
-					customerID: data.customerID,
-					productID: data.productID,
-					userId,
-				},
-			);
-		}
-	},
-	async addLoyaltyPoints(customerID: any, userId?: string) {
-		try {
-			// Validate customer
-			const customer = await db.query.customerMaster.findFirst({
-				where: eq(customerMaster.customerID, customerID),
-			});
-
-			if (!customer) {
-				throw new AppError('Customer not found', StatusCodes.NOT_FOUND);
-			}
-
-			// Fetch or create loyalty account
-			let account = await db.query.loyaltyAccounts.findFirst({
-				where: eq(loyaltyAccounts.id, customerID),
-			});
-
-			if (!account) {
-				// Create new loyalty account if missing
-				const [createdAcc] = await db
-					.insert(loyaltyAccounts)
-					.values({
-						customerID,
-						points_balance: 0,
-						points_redeemed: 0,
-						lifetime_points: 0,
-						createdBy: userId,
-						updatedBy: userId,
-					})
-					.returning();
-
-				account = createdAcc;
-			}
-
-			// Points to add per PAI hit
-			const POINTS_TO_ADD = 200;
-
-			const updatedBalance = account.points_balance + POINTS_TO_ADD;
-			const updatedLifetime = account.lifetime_points + POINTS_TO_ADD;
-
-			// Update account balance
-			const [updatedAccount] = await db
-				.update(loyaltyAccounts)
-				.set({
-					points_balance: updatedBalance,
-					lifetime_points: updatedLifetime,
-					last_transaction_at: new Date(),
-					updatedBy: userId,
-					updatedAt: new Date(),
-				})
-				.where(eq(loyaltyAccounts.id, account.id))
-				.returning();
-
-			// Insert transaction history
-			await db.insert(loyaltyTransactions).values({
-				customerID,
-				account_id: account.id,
-				initialPoint: account.points_balance,
-				manipulatedPoint: POINTS_TO_ADD,
-				totalPoint: updatedBalance,
-				type: 'EARN',
-				description: 'PAI reward points added',
-				createdBy: userId,
-				updatedBy: userId,
-			});
-
-			return {
-				message: '200 Loyalty points added successfully',
-				data: updatedAccount,
-			};
-		} catch (error) {
-			handleServiceError(
-				error,
-				'Failed to add loyalty points',
-				StatusCodes.INTERNAL_SERVER_ERROR,
-				'Error in addLoyaltyPoints service',
-				{ customerID, userId },
-			);
-		}
-	},
 	async bulkUploadCustomers(
 		file: Express.Multer.File | undefined,
 		userId?: string,
@@ -621,99 +477,65 @@ export const customerService = {
 			);
 		}
 	},
-	// async getOrderById(id: string, userId?: string) {
-	// 	try {
-	// 		const order = await db.query.orders.findFirst({
-	// 			where: eq(orders.id, id),
-	// 			with: {
-	// 				customer: true,
-	// 				createdByUser: true,
-	// 				updatedByUser: true,
-	// 				orderItems: {
-	// 					with: {
-	// 						product: true,
-	// 						createdByUser: true,
-	// 						updatedByUser: true,
-	// 					},
-	// 					orderBy: (orderItems, { desc }) => [desc(orderItems.createdAt)],
-	// 				},
-	// 			},
-	// 		});
-
-	// 		if (!order) {
-	// 			throw new AppError("Order not found", StatusCodes.NOT_FOUND);
-	// 		}
-
-	// 		return {
-	// 			data: order,
-	// 			message: "Order fetched successfully",
-	// 		};
-	// 	} catch (error) {
-	// 		handleServiceError(
-	// 			error,
-	// 			"Failed to fetch order",
-	// 			StatusCodes.INTERNAL_SERVER_ERROR,
-	// 			"Error in getOrderById service",
-	// 			{ id, userId }
-	// 		);
-	// 	}
-	// }
-	async getOrderById(id: string, userId?: string) {
+	async sendTemplateMessage(phoneNumber: string) {
+		const FACEBOOK_API_URL =
+			'https://graph.facebook.com/v24.0/918090124709683/messages';
+		const FACEBOOK_TOKEN = env.WHATSAPP_ACCESS_TOKEN;
 		try {
-			const order = await db.query.orders.findFirst({
-				where: eq(orders.id, id),
-				with: {
-					customer: true,
-					createdByUser: true,
-					updatedByUser: true,
-					orderItems: {
-						with: {
-							product: true,
-							createdByUser: true,
-							updatedByUser: true,
-						},
-						orderBy: (orderItems, { desc }) => [
-							desc(orderItems.createdAt),
+			const response = await axios.post(
+				FACEBOOK_API_URL!,
+				{
+					messaging_product: 'whatsapp',
+					to: phoneNumber,
+					type: 'template',
+					template: {
+						name: 'enrolment_template',
+						language: { code: 'en' },
+						components: [
+							{
+								type: 'header',
+								parameters: [
+									{
+										type: 'image',
+										image: {
+											link: 'https://mtbsapoc.blob.core.windows.net/whatsapppoccontainer/lush-logo.png',
+										},
+									},
+								],
+							},
+							{
+								type: 'button',
+								sub_type: 'flow',
+								index: '0',
+								parameters: [
+									{
+										type: 'payload',
+										payload: '{"flow_token":"0000"}',
+									},
+								],
+							},
 						],
 					},
 				},
-			});
-
-			if (!order) {
-				throw new AppError('Order not found', StatusCodes.NOT_FOUND);
-			}
-
-			//  Fetch loyalty account using order.customer.customerID
-			const loyaltyAccount = await db.query.loyaltyAccounts.findFirst({
-				where: eq(loyaltyAccounts.customerID, order.customer.id),
-				with: {
-					transactions: {
-						orderBy: (t, { desc }) => [desc(t.createdAt)],
+				{
+					headers: {
+						Authorization: `Bearer ${FACEBOOK_TOKEN}`,
+						'Content-Type': 'application/json',
 					},
-					createdByUser: true,
-					updatedByUser: true,
 				},
-			});
+			);
 
 			return {
-				message: 'Order fetched successfully',
-				data: {
-					order,
-					loyaltyAccount: loyaltyAccount ?? {
-						points_balance: 0,
-						points_redeemed: 0,
-						lifetime_points: 0,
-						transactions: [],
-					},
-				},
+				data: response.data,
+				message: 'WhatsApp template message sent successfully',
 			};
-		} catch (error) {
+		} catch (error: any) {
 			handleServiceError(
 				error,
-				'Failed to fetch order',
+				'Failed to send WhatsApp message',
 				StatusCodes.INTERNAL_SERVER_ERROR,
-				'Error in getOrderById service',
-				{ id, userId },
+				'sendTemplateMessage',
+				{ phoneNumber },
 			);
 		}
 	},

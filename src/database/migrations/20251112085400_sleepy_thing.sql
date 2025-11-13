@@ -1,0 +1,1 @@
+ALTER TABLE "tiers" ADD COLUMN "colour_representation" varchar;

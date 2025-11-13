@@ -2,6 +2,7 @@
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
 import { pgTable, uuid, text, integer, timestamp } from 'drizzle-orm/pg-core';
 import { users } from '../../users';
+import { varchar } from 'drizzle-orm/pg-core';
 
 export const tiers = pgTable('tiers', {
 	id: uuid('id').defaultRandom().primaryKey(),
@@ -9,7 +10,7 @@ export const tiers = pgTable('tiers', {
 	tier_description: text('tier_description'),
 	//  Added notNull() for required field
 	points_required: integer('points_required').notNull(),
-
+	colour_representation: varchar('colour_representation'),
 	// 🔹 Audit fields - Fixed naming convention
 	createdBy: uuid('created_by').references(() => users.id, {
 		onDelete: 'set null',

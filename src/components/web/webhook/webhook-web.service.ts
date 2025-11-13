@@ -17,6 +17,7 @@ import env from '@/env';
 import logger from '@/lib/logger';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
 import { formatTemplateResponse } from '@/utils/templateFormatter';
+import { fbCheckStock } from '../orders/orderMaster/facebookSync';
 
 export class WebhookWebService {
 	private customerService: CustomerWebService;
@@ -204,7 +205,7 @@ export class WebhookWebService {
 						);
 						if (
 							typeof interactive.button_reply.payload ===
-								'string' &&
+							'string' &&
 							interactive.button_reply.payload.includes('flow')
 						) {
 							isFlowMessage = true;
@@ -708,7 +709,7 @@ export class WebhookWebService {
 		waId?: string,
 	): Promise<void> {
 		try {
-			logger.info('Order event received from catalog', {
+			logger.info("Order event received from catalog", {
 				phoneNumber,
 				waId,
 				messageId: message?.id,
@@ -717,14 +718,14 @@ export class WebhookWebService {
 
 			const order = message?.order;
 			if (!order) {
-				logger.warn('Order event received but no order data found', {
+				logger.warn("Order event received but no order data found", {
 					phoneNumber,
 					messageId: message?.id,
 				});
 				return;
 			}
 
-			// Extract order details
+			// Extract products list
 			const productsList = order?.products || order?.product_items || [];
 			const itemsCount = productsList.length || 0;
 
@@ -736,16 +737,14 @@ export class WebhookWebService {
 				totalAmount += itemPrice * quantity;
 			}
 
-			const currency = productsList[0]?.currency || 'NGN';
+			const currency = productsList[0]?.currency || "NGN";
 			const formattedTotal = `${totalAmount} ${currency}`;
 
 			const customerName =
-				(await this.customerService.getCustomerName(
-					phoneNumber,
-					waId,
-				)) || 'Customer';
+				(await this.customerService.getCustomerName(phoneNumber, waId)) ||
+				"Customer";
 
-			logger.info('Order details', {
+			logger.info("Order details", {
 				products: order?.products,
 				productItems: order?.product_items,
 				itemsCount,
@@ -757,17 +756,92 @@ export class WebhookWebService {
 				orderId: message?.order?.id,
 			});
 
+			// ================================================================
+			// 🔥 1) STOCK VALIDATION BEFORE ORDER INSERTION
+			// ================================================================
+			const skus = productsList
+				.map((p) => p?.product_retailer_id)
+				.filter(Boolean);
+
+			if (skus.length === 0) {
+				throw new AppError(
+					"No valid product Retailer ID found in the incoming order",
+					StatusCodes.BAD_REQUEST
+				);
+			}
+
+			// Fetch products from DB
+			const dbProducts = await db
+				.select({
+					id: products.id,
+					contentId: products.contentId,
+					qty: products.qty,
+					productName: products.productName,
+				})
+				.from(products)
+				.where(inArray(products.contentId, skus));
+
+			const contentIdToProductMap = new Map(
+				dbProducts.map((p) => [p.contentId, p])
+			);
+
+			// Loop through each ordered product
+			for (const item of productsList) {
+				const contentId = item.product_retailer_id;
+				const qtyRequired = parseInt(item?.quantity || 1, 10);
+
+				const dbProduct = contentIdToProductMap.get(contentId);
+
+				// --- DB STOCK CHECK ---
+				if (!dbProduct) {
+					throw new AppError(
+						`Product with contentId/SKU ${contentId} not found in DB`,
+						StatusCodes.NOT_FOUND
+					);
+				}
+
+				if (!dbProduct.qty || dbProduct.qty < qtyRequired) {
+					throw new AppError(
+						`Product ${dbProduct.productName} does not have enough DB stock`,
+						StatusCodes.BAD_REQUEST
+					);
+				}
+
+				// --- FACEBOOK STOCK CHECK ---
+				const fbInfo = await fbCheckStock(contentId);
+
+				if (!fbInfo.exists) {
+					throw new AppError(
+						`Product ${dbProduct.productName} not found in Facebook catalog`,
+						StatusCodes.BAD_REQUEST
+					);
+				}
+
+				if (fbInfo.availability === "out of stock") {
+					throw new AppError(
+						`Product ${dbProduct.productName} is out of stock on Facebook`,
+						StatusCodes.BAD_REQUEST
+					);
+				}
+			}
+
+			// ================================================================
+			// 🔥 STOCK VALIDATION PASSED → NOW INSERT ORDER
+			// ================================================================
+
 			let newOrder: any = null;
+
 			try {
 				await db.transaction(async (tx) => {
 					const customer =
 						await this.customerService.findCustomerByPhone(
-							phoneNumber,
+							phoneNumber
 						);
+
 					if (!customer) {
 						throw new AppError(
 							`Customer not found for phone number: ${phoneNumber}`,
-							StatusCodes.NOT_FOUND,
+							StatusCodes.NOT_FOUND
 						);
 					}
 
@@ -775,10 +849,11 @@ export class WebhookWebService {
 						.insert(orders)
 						.values({
 							customerID: customer.id,
-							orderNo: message?.order?.id || `ORD-${Date.now()}`,
+							orderNo:
+								message?.order?.id || `ORD-${Date.now()}`,
 							orderName: message?.order?.id,
-							status: 'new',
-							paymentType: 'WhatsApp',
+							status: "new",
+							paymentType: "WhatsApp",
 							metadata: {
 								itemsCount,
 								totalAmount,
@@ -795,88 +870,64 @@ export class WebhookWebService {
 
 					newOrder = insertedOrder;
 
-					logger.info('Order inserted successfully', {
+					logger.info("Order inserted successfully", {
 						orderId: newOrder.id,
 						orderNo: newOrder.orderNo,
 						customerID: newOrder.customerID,
 					});
 
-					const skus = productsList
-						.map((p) => p?.product_retailer_id)
-						.filter(Boolean);
-					if (skus.length === 0) {
-						logger.warn(
-							'No valid product SKUs found, skipping product insertions',
-						);
-						return;
-					}
-
-					const productsToBeMapped = await tx
-						.select({
-							id: products.id,
-							contentId: products.contentId,
-						})
-						.from(products)
-						.where(inArray(products.contentId, skus));
-
-					// Create SKU → Product ID map
-					const contentIdToIdMap = new Map(
-						productsToBeMapped.map((p) => [p.contentId, p.id]),
-					);
-
+					// Map SKUs to product records
 					const orderItemsData = productsList
 						.filter(
 							(p) =>
 								p?.product_retailer_id &&
-								contentIdToIdMap.has(p.product_retailer_id),
+								contentIdToProductMap.has(
+									p.product_retailer_id
+								)
 						)
 						.map((p) => ({
 							orderID: newOrder.id,
-							productID: contentIdToIdMap.get(
-								p.product_retailer_id,
-							)!,
+							productID: contentIdToProductMap.get(
+								p.product_retailer_id
+							)!.id,
 							qty: parseInt(p?.quantity || 1, 10),
-							status: 'new' as const,
+							status: "new" as const,
 						}));
 
 					if (orderItemsData.length > 0) {
 						await tx.insert(orderItems).values(orderItemsData);
-						logger.info('Bulk order-product mapping inserted', {
+
+						logger.info("Bulk order-product mapping inserted", {
 							orderId: newOrder.id,
 							itemCount: orderItemsData.length,
 						});
-					} else {
-						logger.warn(
-							'No order-product mappings created (no valid SKUs found)',
-						);
 					}
 				});
 
-				logger.info(
-					'Order and related products processed successfully',
-					{
-						messageId: message?.id,
-						orderId: message?.order?.id,
-					},
-				);
+				logger.info("Order saved successfully", {
+					orderId: newOrder?.id,
+				});
 			} catch (dbError) {
-				logger.error('Error inserting order and related products', {
+				logger.error("Error inserting order & products", {
 					error: dbError,
 					messageId: message?.id,
 					orderId: message?.order?.id,
 				});
+				throw dbError;
 			}
 
-			// Send order confirmation message
+			// ================================================================
+			// Send order confirmation to user
+			// ================================================================
 			await this.customerService.sendOrderConfirmation(
 				phoneNumber,
 				customerName,
 				itemsCount,
 				formattedTotal,
-				newOrder?.id,
+				newOrder?.id
 			);
 
-			logger.info('Order confirmation sent successfully', {
+			logger.info("Order confirmation sent", {
 				phoneNumber,
 				customerName,
 				itemsCount,
@@ -884,7 +935,7 @@ export class WebhookWebService {
 				orderId: newOrder?.id,
 			});
 		} catch (error) {
-			logger.error('Error handling order event', {
+			logger.error("Error handling order event", {
 				error,
 				phoneNumber,
 				waId,
@@ -892,6 +943,7 @@ export class WebhookWebService {
 			});
 		}
 	}
+
 
 	/**
 	 * Process message status updates
