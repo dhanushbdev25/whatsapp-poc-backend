@@ -66,44 +66,47 @@ export default class WebhookWebController extends BaseApi {
 	}
 
 	public async earnLoyaltyPoints(req: Request, res: Response) {
-		const { productID, customerID } = req.body;
-		const { userId } = req.query;
+	const { productID, customerID } = req.body;
+	const { userId } = req.query;
 
-		// Validate required fields
-		if (!productID || !customerID) {
+	if (!productID || !customerID) {
+		throw new AppError(
+			'Missing required fields: productID or customerID',
+			StatusCodes.BAD_REQUEST,
+		);
+	}
+
+	let resolvedUserId: string;
+	if (userId) {
+		resolvedUserId = String(userId);
+	} else {
+		const whatsappUser = await db
+			.select({ id: users.id })
+			.from(users)
+			.where(eq(users.name, 'whatsapp'))
+			.limit(1);
+
+		if (!whatsappUser.length) {
 			throw new AppError(
-				'Missing required fields: productID or customerID',
-				StatusCodes.BAD_REQUEST,
+				"Default 'whatsapp' customer not found in database",
+				StatusCodes.INTERNAL_SERVER_ERROR,
 			);
 		}
 
-		let resolvedUserId: string;
-		if (userId) {
-			resolvedUserId = String(userId);
-		} else {
-			const whatsappUser = await db
-				.select({ id: users.id })
-				.from(users)
-				.where(eq(users.name, 'whatsapp'))
-				.limit(1);
+		resolvedUserId = whatsappUser[0].id;
+	}
 
-			if (!whatsappUser.length) {
-				throw new AppError(
-					"Default 'whatsapp' customer not found in database",
-					StatusCodes.INTERNAL_SERVER_ERROR,
-				);
-			}
-
-			resolvedUserId = whatsappUser[0].id;
-		}
-
-		const { data, message } = await this.webhookService.earnLoyaltyPoints(
+	const result = await db.transaction(async (tx) => {
+		return await this.webhookService.earnLoyaltyPoints(
 			String(customerID),
 			String(productID),
 			resolvedUserId,
+			tx,
 		);
+	});
 
-		res.locals = { data, message };
-		super.send(res);
-	}
+	res.locals = result;
+	super.send(res);
+}
+
 }

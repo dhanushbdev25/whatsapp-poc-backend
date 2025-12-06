@@ -1,17 +1,29 @@
 import axios from 'axios';
-import { eq, desc as orderDesc, and, inArray, sql, asc } from 'drizzle-orm';
+import {
+	eq,
+	desc as orderDesc,
+	and,
+	inArray,
+	sql,
+	asc as orderAsc,
+	or,
+	ilike,
+	ne,
+} from 'drizzle-orm';
 import { StatusCodes } from 'http-status-codes';
 import { db } from '../../../../database';
 import AppError from '@/abstractions/AppError';
 import {
 	customerMaster,
 	loyaltyAccounts,
+	loyaltyTransactions,
 	notificationPreferences,
 	orderItems,
 	orders,
 	products,
 	tiers,
 } from '@/database/schema';
+import { DbOrTx } from '@/database/transactionType/transactionType';
 import env from '@/env';
 import { parseCustomersExcel } from '@/utils/excelCustomers';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
@@ -36,24 +48,74 @@ export const customerService = {
 	/**
 	 * Fetch all customers
 	 */
-	async getAllCustomers() {
+	async getAllCustomers(reqQuery) {
 		try {
+			const { page, limit, search, sortBy, sortOrder } = reqQuery;
+
+			const offset = (page - 1) * limit;
+
+			const allowedSortFields = {
+				createdAt: customerMaster.createdAt,
+				name: customerMaster.name,
+				customerID: customerMaster.customerID,
+				email: customerMaster.email,
+			};
+			const sortColumn =
+				allowedSortFields[sortBy as keyof typeof allowedSortFields] ||
+				customerMaster.createdAt;
+
+			const whereClause = search
+				? or(
+						ilike(customerMaster.name, `%${search}%`),
+						ilike(
+							sql`CAST(${customerMaster.customerID} AS TEXT)`,
+							`%${search}%`,
+						),
+					)
+				: undefined;
+
 			const customers = await db.query.customerMaster.findMany({
-				orderBy: [orderDesc(customerMaster.createdAt)],
+				where: whereClause,
+				limit,
+				offset,
+				orderBy: (_, { asc, desc }) => [
+					sortOrder === 'ASC' ? asc(sortColumn) : desc(sortColumn),
+				],
 				with: {
 					notificationPreferences: true,
 				},
 			});
 
+			const [{ count: totalCount }] = await db
+				.select({ count: sql<number>`count(*)` })
+				.from(customerMaster)
+				.where(whereClause ?? sql`true`);
+
+			if (!customers || customers.length === 0) {
+				throw new AppError(
+					'Customers not found',
+					StatusCodes.NOT_FOUND,
+				);
+			}
+
 			return {
-				data: customers,
 				message: 'All customers fetched successfully',
+				data: {
+					customers,
+					pagination: {
+						currentPage: page,
+						totalPages: Math.ceil(totalCount / limit),
+						totalItems: totalCount,
+						itemsPerPage: limit,
+					},
+				},
 			};
 		} catch (error) {
 			handleServiceError(
 				error,
 				'Failed to fetch customers',
 				StatusCodes.INTERNAL_SERVER_ERROR,
+				'Error in getAllCustomers service',
 			);
 		}
 	},
@@ -68,10 +130,6 @@ export const customerService = {
 				with: {
 					notificationPreferences: true,
 					loyaltyAccounts: true,
-					loyaltyTransactions: {
-						orderBy: (tx, { desc }) => [desc(tx.createdAt)],
-						limit: 10,
-					},
 					orders: {
 						orderBy: (o, { desc }) => [desc(o.createdAt)],
 						with: {
@@ -120,16 +178,16 @@ export const customerService = {
 
 			const mostPurchasedProduct = topProductResult[0]
 				? {
-					productID: topProductResult[0].productID,
-					productName: topProductResult[0].productName,
-					totalQuantity: topProductResult[0].totalQuantity,
-				}
+						productID: topProductResult[0].productID,
+						productName: topProductResult[0].productName,
+						totalQuantity: topProductResult[0].totalQuantity,
+					}
 				: null;
 
 			const allTiers = await db
 				.select()
 				.from(tiers)
-				.orderBy(asc(tiers.points_required));
+				.orderBy(orderAsc(tiers.points_required));
 
 			const lifetimePoints =
 				customer.loyaltyAccounts?.lifetime_points ?? 0;
@@ -179,13 +237,141 @@ export const customerService = {
 		}
 	},
 
+	async getLoyaltyTransactions(reqQuery) {
+		const { customerID, page, limit, search, sortBy, sortOrder } = reqQuery;
+		const offset = (page - 1) * limit;
+
+		const loyaltyAccount = await db.query.loyaltyAccounts.findFirst({
+			where: eq(loyaltyAccounts.customerID, customerID),
+		});
+
+		if (!loyaltyAccount) {
+			throw new AppError(
+				'Loyalty account not found for this customer',
+				StatusCodes.NOT_FOUND,
+			);
+		}
+
+		const allowedSortFields = {
+			createdAt: loyaltyTransactions.createdAt,
+			type: loyaltyTransactions.type,
+			orderNo: loyaltyTransactions.orderNo,
+		};
+		const sortColumn =
+			allowedSortFields[sortBy as keyof typeof allowedSortFields] ||
+			loyaltyTransactions.createdAt;
+
+		const whereClause = and(
+			eq(loyaltyTransactions.account_id, loyaltyAccount.id),
+			search
+				? or(
+						ilike(loyaltyTransactions.description, `%${search}%`),
+						ilike(loyaltyTransactions.orderNo, `%${search}%`),
+						ilike(loyaltyTransactions.type, `%${search}%`),
+					)
+				: undefined,
+		);
+
+		const records = await db.query.loyaltyTransactions.findMany({
+			where: whereClause,
+			limit,
+			offset,
+			orderBy: (_, { asc, desc }) => [
+				sortOrder === 'ASC' ? asc(sortColumn) : desc(sortColumn),
+			],
+		});
+
+		const [{ count: totalCount }] = await db
+			.select({ count: sql<number>`count(*)` })
+			.from(loyaltyTransactions)
+			.where(whereClause ?? sql`true`);
+
+		return {
+			message: 'Loyalty transactions fetched successfully',
+			data: {
+				transactions: records,
+				pagination: {
+					currentPage: page,
+					totalPages: Math.ceil(totalCount / limit),
+					totalItems: totalCount,
+					itemsPerPage: limit,
+				},
+			},
+		};
+	},
+	async getOrdersByStatus(reqQuery) {
+		const { customerID, status, page, limit, search, sortBy, sortOrder } =
+			reqQuery;
+		const offset = (page - 1) * limit;
+
+		const allowedSortFields = {
+			createdAt: orders.createdAt,
+			orderNo: orders.orderNo,
+			orderName: orders.orderName,
+			status: orders.status,
+		};
+		const sortColumn =
+			allowedSortFields[sortBy as keyof typeof allowedSortFields] ||
+			orders.createdAt;
+
+		const whereClause = and(
+			eq(orders.customerID, customerID),
+			status === 'pending'
+				? ne(orders.status, 'completed')
+				: eq(orders.status, 'completed'),
+			search
+				? or(
+						ilike(orders.orderNo, `%${search}%`),
+						ilike(orders.orderName, `%${search}%`),
+						ilike(orders.trackingNo, `%${search}%`),
+					)
+				: undefined,
+		);
+
+		const records = await db.query.orders.findMany({
+			where: whereClause,
+			limit,
+			offset,
+			orderBy: (_, { asc, desc }) => [
+				sortOrder === 'ASC' ? asc(sortColumn) : desc(sortColumn),
+			],
+			with: {
+				orderItems: { with: { product: true } },
+			},
+		});
+
+		const [{ count: totalCount }] = await db
+			.select({ count: sql<number>`count(*)` })
+			.from(orders)
+			.where(whereClause ?? sql`true`);
+
+		return {
+			message:
+				status === 'pending'
+					? 'Pending orders fetched successfully'
+					: 'Completed orders fetched successfully',
+			data: {
+				orders: records,
+				pagination: {
+					currentPage: page,
+					totalPages: Math.ceil(totalCount / limit),
+					totalItems: totalCount,
+					itemsPerPage: limit,
+				},
+			},
+		};
+	},
 	/**
 	 * Create new customer
 	 */
 
-	async createCustomer(data: CreateCustomerInput, userId?: string) {
+	async createCustomer(
+		data: CreateCustomerInput,
+		userId?: string,
+		txOrDb: DbOrTx = db,
+	) {
 		try {
-			// Check if email already exists
+			// Check if phone already exists
 			const existing = await db.query.customerMaster.findFirst({
 				where: eq(customerMaster.phone, data.phone),
 			});
@@ -194,6 +380,8 @@ export const customerService = {
 					'Customer with this phone no already exists',
 					StatusCodes.CONFLICT,
 				);
+
+			// Check if CustomerID already exists
 			const existingID = await db.query.customerMaster.findFirst({
 				where: eq(customerMaster.customerID, data.customerID),
 			});
@@ -202,8 +390,9 @@ export const customerService = {
 					'Customer with this Customer ID already exists',
 					StatusCodes.CONFLICT,
 				);
+
 			// Create new customer
-			const [createdCustomer] = await db
+			const [createdCustomer] = await txOrDb
 				.insert(customerMaster)
 				.values({
 					customerID: data.customerID,
@@ -221,8 +410,8 @@ export const customerService = {
 				})
 				.returning();
 
-			//  1. Auto-create Loyalty Account
-			await db.insert(loyaltyAccounts).values({
+			// 1️⃣ Auto-create Loyalty Account
+			await txOrDb.insert(loyaltyAccounts).values({
 				customerID: createdCustomer.id,
 				points_balance: 0,
 				points_redeemed: 0,
@@ -231,9 +420,9 @@ export const customerService = {
 				updatedBy: userId,
 			});
 
-			//  2. Create notification preferences (optional)
+			// 2️⃣ Create notification preferences (optional)
 			if (data.notificationPreferences) {
-				await db.insert(notificationPreferences).values({
+				await txOrDb.insert(notificationPreferences).values({
 					customerID: createdCustomer.id,
 					orderUpdates:
 						data.notificationPreferences.orderUpdates ?? false,
@@ -247,6 +436,7 @@ export const customerService = {
 				});
 			}
 
+			// 3️⃣ Fetch full customer with relations
 			const customer = await db.query.customerMaster.findFirst({
 				where: eq(customerMaster.id, createdCustomer.id),
 				with: { notificationPreferences: true, loyaltyAccounts: true },
@@ -270,9 +460,15 @@ export const customerService = {
 	/**
 	 * Update customer by UUID
 	 */
-	async updateCustomer(customerId: string, data: any, userId?: string) {
+
+	async updateCustomer(
+		customerId: string,
+		data: any,
+		userId?: string,
+		txOrDb: DbOrTx = db,
+	) {
 		try {
-			// 1️⃣ Ensure UUID format — early validation helps catch errors early
+			// 1️⃣ Validate UUID format (outside of DB)
 			if (!/^[0-9a-fA-F-]{36}$/.test(customerId)) {
 				throw new AppError(
 					'Invalid customer ID format (expected UUID)',
@@ -280,14 +476,14 @@ export const customerService = {
 				);
 			}
 
-			// 2️⃣ Fetch existing customer
+			// 2️⃣ Fetch existing customer (read → use db)
 			const existing = await db.query.customerMaster.findFirst({
 				where: eq(customerMaster.id, customerId),
 			});
 			if (!existing)
 				throw new AppError('Customer not found', StatusCodes.NOT_FOUND);
 
-			// 3️⃣ Check for duplicate email
+			// 3️⃣ Check for duplicate email (read → use db)
 			if (data.email && data.email !== existing.email) {
 				const duplicate = await db.query.customerMaster.findFirst({
 					where: and(
@@ -302,8 +498,8 @@ export const customerService = {
 					);
 			}
 
-			// 4️⃣ Update customer master
-			await db
+			// 4️⃣ Update customer master (write → use txOrDb)
+			await txOrDb
 				.update(customerMaster)
 				.set({
 					name: data.name ?? existing.name,
@@ -318,9 +514,9 @@ export const customerService = {
 				})
 				.where(eq(customerMaster.id, customerId));
 
-			// 5️⃣ Update notification preferences (optional)
+			// 5️⃣ Update notification preferences (optional write → use txOrDb)
 			if (data.notificationPreferences) {
-				await db
+				await txOrDb
 					.update(notificationPreferences)
 					.set({
 						orderUpdates:
@@ -338,7 +534,7 @@ export const customerService = {
 					.where(eq(notificationPreferences.customerID, customerId));
 			}
 
-			// 6️⃣ Fetch updated customer
+			// 6️⃣ Fetch updated customer (read → use db)
 			const updated = await db.query.customerMaster.findFirst({
 				where: eq(customerMaster.id, customerId),
 				with: { notificationPreferences: true },
@@ -359,9 +555,15 @@ export const customerService = {
 	/**
 	 * Soft delete customer by UUID
 	 */
-	async deleteCustomer(customerId: string, userId?: string) {
+
+	async deleteCustomer(
+		customerId: string,
+		userId?: string,
+		txOrDb: DbOrTx = db,
+	) {
 		try {
-			const [deleted] = await db
+			// Perform soft delete (write → use txOrDb)
+			const [deleted] = await txOrDb
 				.update(customerMaster)
 				.set({
 					isActive: false,
@@ -371,6 +573,7 @@ export const customerService = {
 				.where(eq(customerMaster.id, customerId))
 				.returning();
 
+			// Validation after DB operation
 			if (!deleted)
 				throw new AppError('Customer not found', StatusCodes.NOT_FOUND);
 
@@ -390,12 +593,15 @@ export const customerService = {
 	},
 
 	async bulkUploadCustomers(
-		file: Express.Multer.File | undefined,
+		file: Express.Multer.File,
 		userId?: string,
+		txOrDb: DbOrTx = db,
 	) {
 		try {
+			// 1️⃣ Basic file and content validation
 			if (!file)
 				throw new AppError('No file provided', StatusCodes.BAD_REQUEST);
+
 			const rows = await parseCustomersExcel(file.buffer);
 			if (!rows.length)
 				throw new AppError(
@@ -403,6 +609,7 @@ export const customerService = {
 					StatusCodes.BAD_REQUEST,
 				);
 
+			// 2️⃣ Check for existing emails (read → use db)
 			const emails = rows.map((r) => r.email.toLowerCase());
 			const existing = await db
 				.select({ email: customerMaster.email })
@@ -412,6 +619,7 @@ export const customerService = {
 			const existingEmails = new Set(
 				existing.map((e) => e.email.toLowerCase()),
 			);
+
 			const toInsert = rows.filter(
 				(r) => !existingEmails.has(r.email.toLowerCase()),
 			);
@@ -419,46 +627,44 @@ export const customerService = {
 				existingEmails.has(r.email.toLowerCase()),
 			);
 
-			const createdCount = await db.transaction(async (tx) => {
-				for (const row of toInsert) {
-					console.log('row consoled', row);
-					const [customer] = await tx
-						.insert(customerMaster)
-						.values({
-							customerID: row.customerID,
-							name: row.name,
-							email: row.email,
-							phone: row.phone,
-							gender: row.gender,
-							address: row.address,
-							state: row.state,
-							pincode: row.pincode,
-							createdBy: userId,
-							updatedBy: userId,
-							isActive: true,
-						})
-						.returning();
-
-					await tx.insert(notificationPreferences).values({
-						customerID: customer.id,
-						orderUpdates:
-							row.notificationPreferences.orderUpdates ?? false,
-						loyaltyRewards:
-							row.notificationPreferences.loyaltyRewards ?? false,
-						promotionalMessages:
-							row.notificationPreferences.promotionalMessages ??
-							false,
+			// 3️⃣ Perform inserts (write → use txOrDb)
+			for (const row of toInsert) {
+				const [customer] = await txOrDb
+					.insert(customerMaster)
+					.values({
+						customerID: row.customerID,
+						name: row.name,
+						email: row.email,
+						phone: row.phone,
+						gender: row.gender,
+						address: row.address,
+						state: row.state,
+						pincode: row.pincode,
 						createdBy: userId,
 						updatedBy: userId,
-					});
-				}
-				return toInsert.length;
-			});
+						isActive: true,
+					})
+					.returning();
 
+				await txOrDb.insert(notificationPreferences).values({
+					customerID: customer.id,
+					orderUpdates:
+						row.notificationPreferences.orderUpdates ?? false,
+					loyaltyRewards:
+						row.notificationPreferences.loyaltyRewards ?? false,
+					promotionalMessages:
+						row.notificationPreferences.promotionalMessages ??
+						false,
+					createdBy: userId,
+					updatedBy: userId,
+				});
+			}
+
+			// 4️⃣ Return structured response
 			return {
 				data: {
 					totalRows: rows.length,
-					createdCount,
+					createdCount: toInsert.length,
 					skippedCount: skipped.length,
 					errors: skipped.map((s) => ({
 						email: s.email,

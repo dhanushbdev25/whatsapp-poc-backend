@@ -169,6 +169,140 @@ export class WhatsAppMessageService {
 	}
 
 	/**
+	 * Send welcome message with brand selection buttons
+	 * Note: WhatsApp supports max 3 buttons, so we use a list for 5 options
+	 */
+	public async sendWelcomeMessage(to: string): Promise<void> {
+		try {
+			const bodyText =
+				'Welcome to Tolaram Ecommerce. Your gateway to iconic brands trusted across homes and lifestyles.\n\nTap into a world of bold flavors, vibrant beauty, nourishing wellness and everyday essentials.\n\nStart exploring. Your next favorite product is waiting. ✨🚀';
+			const footerText = 'Select a brand to continue';
+
+			const payload = {
+				messaging_product: 'whatsapp',
+				to,
+				type: 'interactive',
+				interactive: {
+					type: 'list',
+					body: {
+						text: bodyText,
+					},
+					footer: {
+						text: footerText,
+					},
+					action: {
+						button: 'Select Brand',
+						sections: [
+							{
+								title: 'Brands',
+								rows: [
+									{
+										id: 'CELEBR8LYFE',
+										title: 'Celebr8lyfe',
+									},
+									{
+										id: 'LUSH',
+										title: 'Lush',
+									},
+									{
+										id: 'INDOMIE',
+										title: 'Indomie',
+									},
+									{
+										id: 'MINIME',
+										title: 'Minime',
+									},
+									{
+										id: 'POWEROIL',
+										title: 'Poweroil',
+									},
+								],
+							},
+						],
+					},
+				},
+			};
+
+			const response = await axios.post(this.apiUrl, payload, {
+				headers: {
+					Authorization: `Bearer ${this.accessToken}`,
+					'Content-Type': 'application/json',
+				},
+			});
+
+			logger.info('Welcome message sent successfully', {
+				to,
+				messageId: response.data?.messages?.[0]?.id,
+			});
+		} catch (error) {
+			logger.error('Failed to send welcome message', {
+				error: error instanceof Error ? error.message : error,
+				errorResponse: (error as any)?.response?.data,
+				to,
+			});
+			throw error;
+		}
+	}
+
+	/**
+	 * Send brand-specific message with URL button
+	 */
+	public async sendBrandMessage(
+		to: string,
+		brandName: string,
+	): Promise<void> {
+		try {
+			const bodyText = `Welcome to ${brandName}! \n\nStep into a curated selection of products shaped around quality, flavor and everyday delight.
+Discover what sets this brand apart and find something that fits your style instantly.
+Tap below and enter the collection. 🌟🛍️`;
+			const displayText = 'Shop Now';
+			const ctaUrl =
+				'https://ecom-web-static-web.onrender.com/products?page=1';
+
+			const payload = {
+				messaging_product: 'whatsapp',
+				to,
+				type: 'interactive',
+				interactive: {
+					type: 'cta_url',
+					body: {
+						text: bodyText,
+					},
+					action: {
+						name: 'cta_url',
+						parameters: {
+							display_text: displayText,
+							url: ctaUrl,
+						},
+					},
+				},
+			};
+
+			const response = await axios.post(this.apiUrl, payload, {
+				headers: {
+					Authorization: `Bearer ${this.accessToken}`,
+					'Content-Type': 'application/json',
+				},
+			});
+
+			logger.info('Brand message sent successfully', {
+				to,
+				brandName,
+				ctaUrl,
+				messageId: response.data?.messages?.[0]?.id,
+			});
+		} catch (error) {
+			logger.error('Failed to send brand message', {
+				error: error instanceof Error ? error.message : error,
+				errorResponse: (error as any)?.response?.data,
+				to,
+				brandName,
+			});
+			throw error;
+		}
+	}
+
+	/**
 	 * Send CTA URL message for adding points
 	 */
 	public async sendAddPointsCTA(to: string, userId: number): Promise<void> {

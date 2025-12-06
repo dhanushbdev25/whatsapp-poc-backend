@@ -4,15 +4,11 @@ import { Request, Response, Router } from 'express';
 import BaseApi from '../../../BaseApi';
 import { orderMasterPostAuthService } from './orderMasterPostAuth.service';
 
-
 /** Helper: build Stripe client */
 
-
 export default class OrderMasterPostAuthController extends BaseApi {
-
 	constructor() {
 		super();
-		
 	}
 
 	public register(): Router {
@@ -25,7 +21,6 @@ export default class OrderMasterPostAuthController extends BaseApi {
 		return this.router;
 	}
 
-
 	public async getOrderDetailsById(req: Request, res: Response) {
 		const { id }: any = req.params;
 		const result = await orderMasterPostAuthService.getOrderById(id);
@@ -35,10 +30,11 @@ export default class OrderMasterPostAuthController extends BaseApi {
 	}
 
 	public async getAllOrderDetails(req: Request, res: Response) {
-		const result = await orderMasterPostAuthService.getAllOrderDetails();
+		const result = await orderMasterPostAuthService.getAllOrderDetails(
+			req.query,
+		);
 
 		res.locals = { data: result };
 		super.send(res);
 	}
-
 }

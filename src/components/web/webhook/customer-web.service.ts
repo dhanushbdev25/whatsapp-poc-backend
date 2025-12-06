@@ -266,6 +266,23 @@ export class CustomerWebService {
 	}
 
 	/**
+	 * Send welcome message with brand selection
+	 */
+	public async sendWelcomeMessage(phoneNumber: string): Promise<void> {
+		await this.whatsappMessageService.sendWelcomeMessage(phoneNumber);
+	}
+
+	/**
+	 * Send brand-specific message with URL button
+	 */
+	public async sendBrandMessage(
+		phoneNumber: string,
+		brandName: string,
+	): Promise<void> {
+		await this.whatsappMessageService.sendBrandMessage(phoneNumber, brandName);
+	}
+
+	/**
 	 * Send Add Points CTA message
 	 */
 	public async sendAddPointsCTA(

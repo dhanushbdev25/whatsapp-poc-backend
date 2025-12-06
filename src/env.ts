@@ -61,6 +61,9 @@ const envSchema = z.object({
 	DB_MIGRATING: stringBoolean,
 	DB_SEEDING: stringBoolean,
 
+	FB_CATALOG_ID: z.coerce.number().default(2085125095564033),
+	FB_ACCESS_TOKEN: z.string().optional(),
+
 	WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string(),
 	WHATSAPP_ACCESS_TOKEN: z.string(),
 	WHATSAPP_PHONE_NUMBER_ID: z.string(),

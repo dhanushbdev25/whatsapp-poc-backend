@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { eq, inArray } from 'drizzle-orm';
 import { StatusCodes } from 'http-status-codes';
+import { fbCheckStock } from '../orders/orderMaster/facebookSync';
 import { CustomerWebService } from './customer-web.service';
 import { parseWaIdToCustomerID } from './webhook-utils';
 import AppError from '@/abstractions/AppError';
@@ -17,7 +18,7 @@ import env from '@/env';
 import logger from '@/lib/logger';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
 import { formatTemplateResponse } from '@/utils/templateFormatter';
-import { fbCheckStock } from '../orders/orderMaster/facebookSync';
+import { DbOrTx } from '@/database/transactionType/transactionType';
 
 export class WebhookWebService {
 	private customerService: CustomerWebService;
@@ -205,7 +206,7 @@ export class WebhookWebService {
 						);
 						if (
 							typeof interactive.button_reply.payload ===
-							'string' &&
+								'string' &&
 							interactive.button_reply.payload.includes('flow')
 						) {
 							isFlowMessage = true;
@@ -257,6 +258,8 @@ export class WebhookWebService {
 					textContent === 'WIG'
 				) {
 					await this.handleTryWigsRequest(phoneNumber, customerWaId);
+				} else if (textContent === 'REGISTER') {
+					await this.handleRegisterRequest(phoneNumber);
 				}
 			}
 
@@ -280,6 +283,40 @@ export class WebhookWebService {
 					await this.handleBalanceRequest(phoneNumber, customerWaId);
 				} else if (buttonId === 'TRY_WIG') {
 					await this.handleTryWigsRequest(phoneNumber, customerWaId);
+				} else if (
+					buttonId === 'CELEBR8LYFE' ||
+					buttonId === 'LUSH' ||
+					buttonId === 'INDOMIE' ||
+					buttonId === 'MINIME' ||
+					buttonId === 'POWEROIL'
+				) {
+					await this.handleBrandButtonRequest(
+						phoneNumber,
+						buttonId,
+						customerWaId,
+					);
+				}
+			}
+
+			// Handle list replies (for brand selection)
+			if (
+				messageType === 'interactive' &&
+				message?.interactive?.type === 'list_reply'
+			) {
+				const listId =
+					message?.interactive?.list_reply?.id?.toUpperCase();
+				if (
+					listId === 'CELEBR8LYFE' ||
+					listId === 'LUSH' ||
+					listId === 'INDOMIE' ||
+					listId === 'MINIME' ||
+					listId === 'POWEROIL'
+				) {
+					await this.handleBrandButtonRequest(
+						phoneNumber,
+						listId,
+						customerWaId,
+					);
 				}
 			}
 
@@ -656,6 +693,63 @@ export class WebhookWebService {
 	}
 
 	/**
+	 * Handle REGISTER request - send welcome message with brand selection
+	 */
+	private async handleRegisterRequest(phoneNumber: string): Promise<void> {
+		try {
+			logger.info('Register request received', { phoneNumber });
+			await this.customerService.sendWelcomeMessage(phoneNumber);
+		} catch (error) {
+			logger.error('Error handling register request', {
+				error,
+				phoneNumber,
+			});
+		}
+	}
+
+	/**
+	 * Handle brand button click - send brand-specific message
+	 */
+	private async handleBrandButtonRequest(
+		phoneNumber: string,
+		brandId: string,
+		waId?: string,
+	): Promise<void> {
+		try {
+			logger.info('Brand button request received', {
+				phoneNumber,
+				brandId,
+				waId,
+			});
+
+			// If LUSH is clicked, send catalog message instead
+			if (brandId === 'LUSH') {
+				await this.handleCatalogRequest(phoneNumber, waId);
+				return;
+			}
+
+			// Map brand IDs to display names
+			const brandNameMap: Record<string, string> = {
+				CELEBR8LYFE: 'Celebr8lyfe',
+				LUSH: 'Lush',
+				INDOMIE: 'Indomie',
+				MINIME: 'Minime',
+				POWEROIL: 'Poweroil',
+			};
+
+			const brandName = brandNameMap[brandId] || brandId;
+			await this.customerService.sendBrandMessage(phoneNumber, brandName);
+		} catch (error) {
+			logger.error('Error handling brand button request', {
+				error,
+				phoneNumber,
+				brandId,
+				waId,
+			});
+		}
+	}
+
+	/**
 	 * Handle VIEW_CATALOG or CATALOG request - send catalog message
 	 */
 	private async handleCatalogRequest(
@@ -709,7 +803,7 @@ export class WebhookWebService {
 		waId?: string,
 	): Promise<void> {
 		try {
-			logger.info("Order event received from catalog", {
+			logger.info('Order event received from catalog', {
 				phoneNumber,
 				waId,
 				messageId: message?.id,
@@ -718,7 +812,7 @@ export class WebhookWebService {
 
 			const order = message?.order;
 			if (!order) {
-				logger.warn("Order event received but no order data found", {
+				logger.warn('Order event received but no order data found', {
 					phoneNumber,
 					messageId: message?.id,
 				});
@@ -737,14 +831,16 @@ export class WebhookWebService {
 				totalAmount += itemPrice * quantity;
 			}
 
-			const currency = productsList[0]?.currency || "NGN";
+			const currency = productsList[0]?.currency || 'NGN';
 			const formattedTotal = `${totalAmount} ${currency}`;
 
 			const customerName =
-				(await this.customerService.getCustomerName(phoneNumber, waId)) ||
-				"Customer";
+				(await this.customerService.getCustomerName(
+					phoneNumber,
+					waId,
+				)) || 'Customer';
 
-			logger.info("Order details", {
+			logger.info('Order details', {
 				products: order?.products,
 				productItems: order?.product_items,
 				itemsCount,
@@ -765,8 +861,8 @@ export class WebhookWebService {
 
 			if (skus.length === 0) {
 				throw new AppError(
-					"No valid product Retailer ID found in the incoming order",
-					StatusCodes.BAD_REQUEST
+					'No valid product Retailer ID found in the incoming order',
+					StatusCodes.BAD_REQUEST,
 				);
 			}
 
@@ -782,7 +878,7 @@ export class WebhookWebService {
 				.where(inArray(products.contentId, skus));
 
 			const contentIdToProductMap = new Map(
-				dbProducts.map((p) => [p.contentId, p])
+				dbProducts.map((p) => [p.contentId, p]),
 			);
 
 			// Loop through each ordered product
@@ -796,14 +892,14 @@ export class WebhookWebService {
 				if (!dbProduct) {
 					throw new AppError(
 						`Product with contentId/SKU ${contentId} not found in DB`,
-						StatusCodes.NOT_FOUND
+						StatusCodes.NOT_FOUND,
 					);
 				}
 
 				if (!dbProduct.qty || dbProduct.qty < qtyRequired) {
 					throw new AppError(
 						`Product ${dbProduct.productName} does not have enough DB stock`,
-						StatusCodes.BAD_REQUEST
+						StatusCodes.BAD_REQUEST,
 					);
 				}
 
@@ -813,14 +909,14 @@ export class WebhookWebService {
 				if (!fbInfo.exists) {
 					throw new AppError(
 						`Product ${dbProduct.productName} not found in Facebook catalog`,
-						StatusCodes.BAD_REQUEST
+						StatusCodes.BAD_REQUEST,
 					);
 				}
 
-				if (fbInfo.availability === "out of stock") {
+				if (fbInfo.availability === 'out of stock') {
 					throw new AppError(
 						`Product ${dbProduct.productName} is out of stock on Facebook`,
-						StatusCodes.BAD_REQUEST
+						StatusCodes.BAD_REQUEST,
 					);
 				}
 			}
@@ -835,13 +931,13 @@ export class WebhookWebService {
 				await db.transaction(async (tx) => {
 					const customer =
 						await this.customerService.findCustomerByPhone(
-							phoneNumber
+							phoneNumber,
 						);
 
 					if (!customer) {
 						throw new AppError(
 							`Customer not found for phone number: ${phoneNumber}`,
-							StatusCodes.NOT_FOUND
+							StatusCodes.NOT_FOUND,
 						);
 					}
 
@@ -849,11 +945,10 @@ export class WebhookWebService {
 						.insert(orders)
 						.values({
 							customerID: customer.id,
-							orderNo:
-								message?.order?.id || `ORD-${Date.now()}`,
+							orderNo: message?.order?.id || `ORD-${Date.now()}`,
 							orderName: message?.order?.id,
-							status: "new",
-							paymentType: "WhatsApp",
+							status: 'new',
+							paymentType: 'WhatsApp',
 							metadata: {
 								itemsCount,
 								totalAmount,
@@ -870,7 +965,7 @@ export class WebhookWebService {
 
 					newOrder = insertedOrder;
 
-					logger.info("Order inserted successfully", {
+					logger.info('Order inserted successfully', {
 						orderId: newOrder.id,
 						orderNo: newOrder.orderNo,
 						customerID: newOrder.customerID,
@@ -882,33 +977,33 @@ export class WebhookWebService {
 							(p) =>
 								p?.product_retailer_id &&
 								contentIdToProductMap.has(
-									p.product_retailer_id
-								)
+									p.product_retailer_id,
+								),
 						)
 						.map((p) => ({
 							orderID: newOrder.id,
 							productID: contentIdToProductMap.get(
-								p.product_retailer_id
+								p.product_retailer_id,
 							)!.id,
 							qty: parseInt(p?.quantity || 1, 10),
-							status: "new" as const,
+							status: 'new' as const,
 						}));
 
 					if (orderItemsData.length > 0) {
 						await tx.insert(orderItems).values(orderItemsData);
 
-						logger.info("Bulk order-product mapping inserted", {
+						logger.info('Bulk order-product mapping inserted', {
 							orderId: newOrder.id,
 							itemCount: orderItemsData.length,
 						});
 					}
 				});
 
-				logger.info("Order saved successfully", {
+				logger.info('Order saved successfully', {
 					orderId: newOrder?.id,
 				});
 			} catch (dbError) {
-				logger.error("Error inserting order & products", {
+				logger.error('Error inserting order & products', {
 					error: dbError,
 					messageId: message?.id,
 					orderId: message?.order?.id,
@@ -924,10 +1019,10 @@ export class WebhookWebService {
 				customerName,
 				itemsCount,
 				formattedTotal,
-				newOrder?.id
+				newOrder?.id,
 			);
 
-			logger.info("Order confirmation sent", {
+			logger.info('Order confirmation sent', {
 				phoneNumber,
 				customerName,
 				itemsCount,
@@ -935,7 +1030,7 @@ export class WebhookWebService {
 				orderId: newOrder?.id,
 			});
 		} catch (error) {
-			logger.error("Error handling order event", {
+			logger.error('Error handling order event', {
 				error,
 				phoneNumber,
 				waId,
@@ -943,7 +1038,6 @@ export class WebhookWebService {
 			});
 		}
 	}
-
 
 	/**
 	 * Process message status updates
@@ -1012,137 +1106,126 @@ export class WebhookWebService {
 	}
 
 	async earnLoyaltyPoints(
-		userIdentifier: string,
-		productID: string,
-		resolvedUserId: string,
-	) {
-		try {
-			const isUUID = /^[0-9a-fA-F-]{36}$/.test(userIdentifier);
-			const isproductUUID = /^[0-9a-fA-F-]{36}$/.test(productID);
-			return await db.transaction(async (tx) => {
-				const product = await tx.query.products.findFirst({
-					where: isproductUUID
-						? eq(products.id, productID)
-						: eq(products.contentId, productID),
-				});
-				if (!product)
-					throw new AppError(
-						'Product not found',
-						StatusCodes.NOT_FOUND,
-					);
+	userIdentifier: string,
+	productID: string,
+	resolvedUserId: string,
+	txOrDb: DbOrTx = db,
+) {
+	try {
+		const isUUID = /^[0-9a-fA-F-]{36}$/.test(userIdentifier);
+		const isproductUUID = /^[0-9a-fA-F-]{36}$/.test(productID);
 
-				const productPoints = product?.points ?? 0;
-				if (!productPoints || productPoints <= 0)
-					throw new AppError(
-						'Product does not have valid points value',
-						StatusCodes.BAD_REQUEST,
-					);
+		const product = await db.query.products.findFirst({
+			where: isproductUUID
+				? eq(products.id, productID)
+				: eq(products.contentId, productID),
+		});
+		if (!product)
+			throw new AppError('Product not found', StatusCodes.NOT_FOUND);
 
-				const customer = await tx.query.customerMaster.findFirst({
-					where: isUUID
-						? eq(customerMaster.id, userIdentifier)
-						: eq(customerMaster.customerID, Number(userIdentifier)),
-					with: { loyaltyAccounts: true },
-				});
-
-				if (!customer)
-					throw new AppError(
-						'Customer not found',
-						StatusCodes.NOT_FOUND,
-					);
-
-				const account = customer.loyaltyAccounts;
-				if (!account)
-					throw new AppError(
-						'Loyalty account not found for this customer',
-						StatusCodes.NOT_FOUND,
-					);
-
-				const newBalance = account.points_balance + productPoints;
-				const newLifetime = account.lifetime_points + productPoints;
-
-				const [createdTx] = await tx
-					.insert(loyaltyTransactions)
-					.values({
-						customerID: customer.id,
-						account_id: account.id,
-						initialPoint: account.points_balance,
-						manipulatedPoint: productPoints,
-						totalPoint: newBalance,
-						description: `Earned ${productPoints} points for purchasing ${product.productName}`,
-						type: 'EARN',
-						metadata: {
-							productID,
-							productName: product.productName,
-							points: productPoints,
-						},
-						// createdBy: userId,
-						// updatedBy: userId,
-					})
-					.returning();
-
-				await tx
-					.update(loyaltyAccounts)
-					.set({
-						points_balance: newBalance,
-						lifetime_points: newLifetime,
-						last_transaction_at: new Date(),
-						updatedBy: customer.updatedBy,
-					})
-					.where(eq(loyaltyAccounts.id, account.id));
-
-				// Send points earned notification message
-				if (customer.phone) {
-					const customerName = customer.name || 'Customer';
-					this.customerService
-						.sendPointsEarnedMessage(
-							customer.phone,
-							productPoints,
-							newBalance,
-							customerName,
-						)
-						.catch((error) => {
-							logger.error(
-								'Failed to send points earned message',
-								{
-									error,
-									customerID: customer.customerID,
-									phone: customer.phone,
-									pointsAdded: productPoints,
-									newBalance,
-								},
-							);
-						});
-				}
-
-				logger.info('Points earned message', {
-					pointsAdded: productPoints,
-					newBalance,
-					customerID: customer.customerID,
-					phone: customer.phone,
-					customerName: customer.name,
-					resolvedUserId,
-				});
-
-				return {
-					data: {
-						transaction: createdTx,
-						account: {
-							points_balance: newBalance,
-							lifetime_points: newLifetime,
-						},
-					},
-					message: `Successfully earned ${productPoints} points.`,
-				};
-			});
-		} catch (error) {
-			handleServiceError(
-				error,
-				'Failed to process loyalty transaction',
-				StatusCodes.INTERNAL_SERVER_ERROR,
-				'earnLoyaltyPoints',
-				{ userIdentifier, productID },
+		const productPoints = product?.points ?? 0;
+		if (!productPoints || productPoints <= 0)
+			throw new AppError(
+				'Product does not have valid points value',
+				StatusCodes.BAD_REQUEST,
 			);
+
+		const customer = await db.query.customerMaster.findFirst({
+			where: isUUID
+				? eq(customerMaster.id, userIdentifier)
+				: eq(customerMaster.customerID, Number(userIdentifier)),
+			with: { loyaltyAccounts: true },
+		});
+
+		if (!customer)
+			throw new AppError('Customer not found', StatusCodes.NOT_FOUND);
+
+		const account = customer.loyaltyAccounts;
+		if (!account)
+			throw new AppError(
+				'Loyalty account not found for this customer',
+				StatusCodes.NOT_FOUND,
+			);
+
+		const newBalance = account.points_balance + productPoints;
+		const newLifetime = account.lifetime_points + productPoints;
+
+		const [createdTx] = await txOrDb
+			.insert(loyaltyTransactions)
+			.values({
+				customerID: customer.id,
+				account_id: account.id,
+				initialPoint: account.points_balance,
+				manipulatedPoint: productPoints,
+				totalPoint: newBalance,
+				description: `Earned ${productPoints} points for purchasing ${product.productName}`,
+				type: 'EARN',
+				metadata: {
+					productID,
+					productName: product.productName,
+					points: productPoints,
+				},
+			})
+			.returning();
+
+		await txOrDb
+			.update(loyaltyAccounts)
+			.set({
+				points_balance: newBalance,
+				lifetime_points: newLifetime,
+				last_transaction_at: new Date(),
+				updatedBy: customer.updatedBy,
+			})
+			.where(eq(loyaltyAccounts.id, account.id));
+
+		if (customer.phone) {
+			const customerName = customer.name || 'Customer';
+			this.customerService
+				.sendPointsEarnedMessage(
+					customer.phone,
+					productPoints,
+					newBalance,
+					customerName,
+				)
+				.catch((error) => {
+					logger.error('Failed to send points earned message', {
+						error,
+						customerID: customer.customerID,
+						phone: customer.phone,
+						pointsAdded: productPoints,
+						newBalance,
+					});
+				});
 		}
+
+		logger.info('Points earned message', {
+			pointsAdded: productPoints,
+			newBalance,
+			customerID: customer.customerID,
+			phone: customer.phone,
+			customerName: customer.name,
+			resolvedUserId,
+		});
+
+		return {
+			data: {
+				transaction: createdTx,
+				account: {
+					points_balance: newBalance,
+					lifetime_points: newLifetime,
+				},
+			},
+			message: `Successfully earned ${productPoints} points.`,
+		};
+	} catch (error) {
+		handleServiceError(
+			error,
+			'Failed to process loyalty transaction',
+			StatusCodes.INTERNAL_SERVER_ERROR,
+			'earnLoyaltyPoints',
+			{ userIdentifier, productID },
+		);
 	}
+}
+
 }

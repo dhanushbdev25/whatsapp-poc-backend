@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import CustomerController from '@/components/web/customers/customerMaster/customerMaster.controller';
+import OrderMasterPostAuthController from '@/components/web/orders/OrderMasterPostAuth/orderMasterPostAuth.controller';
 import ProductController from '@/components/web/products/products.controller';
 import SessionController from '@/components/web/session/session.controller';
 import protect from '@/middleware/protect';
-import OrderMasterPostAuthController from '@/components/web/orders/OrderMasterPostAuth/orderMasterPostAuth.controller';
 
 export default function webPostAuthRoutes(): Router {
 	const router = Router();
@@ -20,7 +20,8 @@ export default function webPostAuthRoutes(): Router {
 	const productController: ProductController = new ProductController();
 	router.use('/products', productController.register());
 
-	const orderPostAuthController : OrderMasterPostAuthController = new OrderMasterPostAuthController();
+	const orderPostAuthController: OrderMasterPostAuthController =
+		new OrderMasterPostAuthController();
 	router.use('/orders/postAuth', orderPostAuthController.register());
 
 	return router;

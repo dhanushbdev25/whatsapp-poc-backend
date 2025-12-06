@@ -1,8 +1,8 @@
 // src/db/schema/tiers.ts
 import { relations, InferSelectModel, InferInsertModel } from 'drizzle-orm';
 import { pgTable, uuid, text, integer, timestamp } from 'drizzle-orm/pg-core';
-import { users } from '../../users';
 import { varchar } from 'drizzle-orm/pg-core';
+import { users } from '../../users';
 
 export const tiers = pgTable('tiers', {
 	id: uuid('id').defaultRandom().primaryKey(),

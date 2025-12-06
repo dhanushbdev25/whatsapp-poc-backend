@@ -1,6 +1,7 @@
 import { Request, Response, Router } from 'express';
 import { productService } from './products.service';
 import BaseApi from '@/components/BaseApi';
+import { db } from '@/database';
 
 export default class ProductController extends BaseApi {
 	constructor() {
@@ -31,23 +32,34 @@ export default class ProductController extends BaseApi {
 
 	public async createProduct(req: Request, res: Response) {
 		const { userId } = req.query;
-		const { data, message } = await productService.createProduct(
-			req.body,
-			userId ? String(userId) : undefined,
-		);
-		res.locals = { data, message };
+
+		const result = await db.transaction(async (tx) => {
+			return await productService.createProduct(
+				req.body,
+				userId ? String(userId) : undefined,
+				tx, // transaction passed in
+			);
+		});
+
+		res.locals = result;
 		super.send(res);
 	}
 
 	public async updateProduct(req: Request, res: Response) {
-		const { id } = req.params;
-		const { userId } = req.query;
-		const { data, message } = await productService.updateProduct(
+	const { id } = req.params;
+	const { userId } = req.query;
+
+	const result = await db.transaction(async (tx) => {
+		return await productService.updateProduct(
 			id,
 			req.body,
 			userId ? String(userId) : undefined,
+			tx,
 		);
-		res.locals = { data, message };
-		super.send(res);
-	}
+	});
+
+	res.locals = result;
+	super.send(res);
+}
+
 }

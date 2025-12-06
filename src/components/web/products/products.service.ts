@@ -1,11 +1,14 @@
 import { eq, desc as orderDesc } from 'drizzle-orm';
 import { StatusCodes } from 'http-status-codes';
+import {
+	fbUpdateProductStock,
+	syncToFacebookCatalog,
+} from './facebookProductSync';
 import AppError from '@/abstractions/AppError';
 import { db } from '@/database';
 import { products } from '@/database/schema';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
-import axios from 'axios';
-import { fbUpdateProductStock, syncToFacebookCatalog } from './facebookProductSync';
+import { DbOrTx } from '@/database/transactionType/transactionType';
 
 interface CreateOrUpdateProductInput {
 	contentId: string;
@@ -25,8 +28,6 @@ interface CreateOrUpdateProductInput {
 }
 
 export const productService = {
-
-
 	/**
 	 * Fetch all products
 	 */
@@ -75,9 +76,12 @@ export const productService = {
 	 * Create a new product
 	 */
 
-	async createProduct(data: CreateOrUpdateProductInput, userId?: string) {
+	async createProduct(
+		data: CreateOrUpdateProductInput,
+		userId?: string,
+		txOrDb: DbOrTx = db,
+	) {
 		try {
-			// 1) Check duplicate contentId
 			const existing = await db.query.products.findFirst({
 				where: eq(products.contentId, data.contentId),
 			});
@@ -85,19 +89,17 @@ export const productService = {
 			if (existing) {
 				throw new AppError(
 					"Product with this contentId already exists",
-					StatusCodes.CONFLICT
+					StatusCodes.CONFLICT,
 				);
 			}
 
-			// 2) Fix metadata type
 			const metadata = Array.isArray(data.metadata)
 				? data.metadata
 				: typeof data.metadata === "string"
 					? JSON.parse(data.metadata)
 					: [];
 
-			// 3) Insert into DB
-			const [newProduct]: any = await db
+			const [newProduct]: any = await txOrDb
 				.insert(products)
 				.values({
 					...data,
@@ -108,7 +110,7 @@ export const productService = {
 				.returning();
 
 			// ======================================================
-			// 🔗 FACEBOOK CATALOG — CREATE PRODUCT
+			//  FACEBOOK CATALOG — CREATE PRODUCT
 			// ======================================================
 			try {
 				const fbResponse = await syncToFacebookCatalog({
@@ -117,7 +119,8 @@ export const productService = {
 					description: "No description available",
 					price: newProduct.amount,
 					currency: newProduct.currency,
-					availability: newProduct.qty > 0 ? "in stock" : "out of stock",
+					availability:
+						newProduct.qty > 0 ? "in stock" : "out of stock",
 					condition: "new",
 					brand: "Default",
 					image_url: Array.isArray(newProduct.metadata)
@@ -126,11 +129,11 @@ export const productService = {
 					url: "https://example.com/product/" + newProduct.contentId,
 				});
 
-				console.log("FB Sync Response:", fbResponse.data);
+				console.log(" FB Sync Response:", fbResponse.data);
 			} catch (fbErr) {
 				console.error(
-					"❌ FB Catalog Sync Failed:",
-					fbErr?.response?.data || fbErr
+					" FB Catalog Sync Failed:",
+					fbErr?.response?.data || fbErr,
 				);
 			}
 
@@ -144,75 +147,68 @@ export const productService = {
 				"Failed to create product",
 				StatusCodes.INTERNAL_SERVER_ERROR,
 				"createProduct",
-				{ data }
+				{ data },
 			);
 		}
 	},
 
-
-
 	async updateProduct(
-		productId: string,
-		data: Partial<CreateOrUpdateProductInput>,
-		userId?: string,
-	) {
-		try {
-			const existing = await db.query.products.findFirst({
-				where: eq(products.id, productId),
-			});
+	productId: string,
+	data: Partial<CreateOrUpdateProductInput>,
+	userId?: string,
+	txOrDb: DbOrTx = db,
+) {
+	try {
+		const existing = await db.query.products.findFirst({
+			where: eq(products.id, productId),
+		});
 
-			if (!existing) {
-				throw new AppError("Product not found", StatusCodes.NOT_FOUND);
-			}
-
-			// Prevent duplicate SKU
-			if (data.sku && data.sku !== existing.sku) {
-				const duplicateSKU = await db.query.products.findFirst({
-					where: eq(products.sku, data.sku),
-				});
-				if (duplicateSKU) {
-					throw new AppError(
-						"Product with this SKU already exists",
-						StatusCodes.CONFLICT
-					);
-				}
-			}
-
-			// --- UPDATE IN DB ---
-			const [updated] = await db
-				.update(products)
-				.set({
-					...data,
-					updatedBy: userId,
-					updatedAt: new Date(),
-				})
-				.where(eq(products.id, productId))
-				.returning();
-
-			// --- UPDATE IN FACEBOOK API ---
-			await fbUpdateProductStock({
-				sku: updated.sku,
-				amount: updated.amount,
-				qty: updated.qty,
-			});
-
-			return {
-				data: updated,
-				message: "Product updated successfully",
-			};
-		} catch (error) {
-			handleServiceError(
-				error,
-				"Failed to update product",
-				StatusCodes.INTERNAL_SERVER_ERROR,
-				"updateProduct",
-				{ productId, data },
-			);
+		if (!existing) {
+			throw new AppError('Product not found', StatusCodes.NOT_FOUND);
 		}
+
+		if (data.sku && data.sku !== existing.sku) {
+			const duplicateSKU = await db.query.products.findFirst({
+				where: eq(products.sku, data.sku),
+			});
+			if (duplicateSKU) {
+				throw new AppError(
+					'Product with this SKU already exists',
+					StatusCodes.CONFLICT,
+				);
+			}
+		}
+
+		const [updated] = await txOrDb
+			.update(products)
+			.set({
+				...data,
+				updatedBy: userId,
+				updatedAt: new Date(),
+			})
+			.where(eq(products.id, productId))
+			.returning();
+
+		await fbUpdateProductStock({
+			sku: updated.sku,
+			amount: updated.amount,
+			qty: updated.qty,
+		});
+
+		return {
+			data: updated,
+			message: 'Product updated successfully',
+		};
+	} catch (error) {
+		handleServiceError(
+			error,
+			'Failed to update product',
+			StatusCodes.INTERNAL_SERVER_ERROR,
+			'updateProduct',
+			{ productId, data },
+		);
 	}
-
-	,
-
+},
 
 	/**
 	 * Update product
@@ -269,5 +265,3 @@ export const productService = {
 	// 	}
 	// },
 };
-
-
