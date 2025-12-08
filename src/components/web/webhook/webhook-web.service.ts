@@ -60,6 +60,7 @@ export class WebhookWebService {
 	 * Process webhook payload and extract events
 	 */
 	public async processWebhookPayload(payload: any): Promise<void> {
+		logger.info('Webhook payload received', { payload: JSON.stringify(payload) });
 		logger.info('Webhook event received', {
 			object: payload?.object,
 			entryCount: payload?.entry?.length || 0,
