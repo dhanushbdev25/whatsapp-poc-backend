@@ -18,6 +18,8 @@ import { fbCheckStock } from './facebookSync';
 import { logger } from '@azure/storage-blob';
 import env from '@/env';
 import Stripe from 'stripe';
+import { CustomerWebService } from '../../webhook/customer-web.service';
+
 
 // interface CreateCustomerInput {
 // 	name: string;
@@ -44,6 +46,9 @@ function getStripe() {
 	// Use null to bind to your account default API version (keeps TS happy)
 	return new Stripe(STRIPE_SECRET_KEY, { apiVersion: null });
 }
+
+const customerWebService = new CustomerWebService();
+
 export const customerService = {
 	async redeemLoyaltyPoints(
 		customerID: string,
@@ -622,7 +627,7 @@ export const customerService = {
 					const deliveryDays = 3;
 					const formattedAmount = order.amount.toFixed(2);
 
-					await this.customerWebService.sendPaymentConfirmation(
+					await customerWebService.sendPaymentConfirmation(
 						orderWithCustomer.customer.phone,
 						customerName,
 						orderNo,
