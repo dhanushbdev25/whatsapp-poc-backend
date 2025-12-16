@@ -1,7 +1,6 @@
 import { eq, desc as orderDesc } from 'drizzle-orm';
 import { StatusCodes } from 'http-status-codes';
 import {
-	fbUpdateProductStock,
 	syncToFacebookCatalog,
 } from './facebookProductSync';
 import AppError from '@/abstractions/AppError';
@@ -189,11 +188,11 @@ export const productService = {
 			.where(eq(products.id, productId))
 			.returning();
 
-		await fbUpdateProductStock({
-			sku: updated.sku,
-			amount: updated.amount,
-			qty: updated.qty,
-		});
+		// await fbUpdateProductStock({
+		// 	sku: updated.sku,
+		// 	amount: updated.amount,
+		// 	qty: updated.qty,
+		// });
 
 		return {
 			data: updated,

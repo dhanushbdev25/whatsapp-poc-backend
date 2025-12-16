@@ -1,4 +1,4 @@
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { StatusCodes } from 'http-status-codes';
 import { db } from '../../../../database/index';
 import { WhatsAppMessageService } from '../../webhook/whatsapp-message.service';
@@ -14,7 +14,7 @@ import {
 } from '@/database/schema';
 import { DbOrTx } from '@/database/transactionType/transactionType';
 import { handleServiceError } from '@/utils/serviceErrorHandler';
-import { fbCheckStock, fbUpdateStock } from './facebookSync';
+import { fbCheckStock } from './facebookSync';
 import { logger } from '@azure/storage-blob';
 import env from '@/env';
 import Stripe from 'stripe';
@@ -35,7 +35,7 @@ import Stripe from 'stripe';
 // }
 
 const STRIPE_SECRET_KEY = env.STRIPE_SECRET_KEY || '';
-const STRIPE_PUBLISHABLE_KEY = env.STRIPE_PUBLISHABLE_KEY || '';
+// const STRIPE_PUBLISHABLE_KEY = env.STRIPE_PUBLISHABLE_KEY || '';
 
 function getStripe() {
 	if (!STRIPE_SECRET_KEY) {
@@ -636,23 +636,23 @@ export const customerService = {
 			}
 
 			// 9️⃣ Facebook sync
-			try {
-				for (const item of orderedItems) {
-					const product = item.product;
-					const qtyOrdered = item.qty ?? 0;
-					const newQty = Math.max((product.qty || 0) - qtyOrdered, 0);
+			// try {
+			// 	for (const item of orderedItems) {
+			// 		const product = item.product;
+			// 		const qtyOrdered = item.qty ?? 0;
+			// 		const newQty = Math.max((product.qty || 0) - qtyOrdered, 0);
 
-					await fbUpdateStock(
-						product.contentId,
-						product.amount,
-						newQty,
-						product.currency
-					);
-				}
-				logger.info("Stock updated & synced to Facebook");
-			} catch (err) {
-				logger.error("Stock update failed", err);
-			}
+			// 		await fbUpdateStock(
+			// 			product.contentId,
+			// 			product.amount,
+			// 			newQty,
+			// 			product.currency
+			// 		);
+			// 	}
+			// 	logger.info("Stock updated & synced to Facebook");
+			// } catch (err) {
+			// 	logger.error("Stock update failed", err);
+			// }
 
 			// 🔟 Final response
 			return {
